@@ -33,6 +33,15 @@ class bcolors:
         self.FAIL = ''
         self.ENDC = ''
 
+def print_ok(header, message=""):
+    print(bcolors.HEADER + "*** " + bcolors.OKBLUE + header + bcolors.ENDC + message);
+
+def print_warn(header, message=""):
+    print(bcolors.HEADER + "*** " + bcolors.WARNING + header + bcolors.ENDC + message);
+
+def print_err(header, message="" ):
+    print(bcolors.HEADER + "*** " + bcolors.FAIL + header + bcolors.ENDC + message);
+
 def daemonize(name):
     """UNIX double fork mechanism."""
     try:
@@ -76,10 +85,10 @@ def check_process(name):
         load_process(name);
         check_process(name);
     else:
-        print("*** Process {0} is running!".format(name));
+        print_ok("Process {0} is running!".format(name));
     
 def load_process(name):
-    print("*** process not running, loading {0}!".format(name))
+    print_warn("Process not running, loading {0}!".format(name))
     daemonize(name)
     sleep(1)
 
@@ -98,7 +107,7 @@ def download_file(url, filename):
             outf.write(response.read());
             outf.close();
     except Exception as e:
-        print(bcolors.FAIL + "Error downloading file: " + bcolors.ENDC + e.args[0]);
+        print_err("Error downloading file: ", e.args[0]);
         pass;
         return False
 
@@ -132,7 +141,7 @@ def check_filter(cur, id, item):
             skip=False;
 
     if count!=0 and skip:
-        print(bcolors.WARNING + "filtering out:\n" + bcolors.ENDC + "{0}. include reason not found.\n".format(item));
+        print_warn("Filtering out:\n", "{0}. include reason not found.\n".format(item));
         ret=False;
     else:
         skip=False;
@@ -140,7 +149,7 @@ def check_filter(cur, id, item):
         if row_exclude[0] in item:
             skip=True;
     if skip:
-        print(bcolors.WARNING + "filtering out:\n" + bcolors.ENDC + "{0}. exclude reason.\n".format(item));
+        print_warn("Filtering out:\n", "{0}. exclude reason.\n".format(item));
         ret=False;
 
     return ret;
@@ -150,10 +159,10 @@ def check_memory(cur, item):
     for row in cur.execute("SELECT * FROM memory WHERE value = '{0}'".format(str(item))):
         count+=1;
     if count == 0:
-        print(bcolors.OKBLUE + "new torrent found:\n" + bcolors.ENDC + "{0}\n".format(str(item)));
+        print_ok("New torrent found:\n", "{0}\n".format(str(item)));
         return True
     else:
-        print(bcolors.WARNING + "torrent already downloaded:\n" + bcolors.ENDC + "{0}\n".format(str(item)));
+        print_warn("Torrent already downloaded:\n", "{0}\n".format(str(item)));
         return False
 
 def add_to_memory(cur, item):
@@ -177,14 +186,17 @@ def process_torrent(cur, item, url):
 ################################################################################
 
 if __name__ == '__main__':
-    print("fecht v{0} (hex0var) GPLv2".format(__version__))
+    print_ok("fecht v{0} (hex0var) GPLv2".format(__version__) + "\n")
 
-    con=sqlite3.connect(db_path)
-    cur=con.cursor()
+    try:
+        con=sqlite3.connect(db_path)
+        cur=con.cursor()
+    except Exception as e:
+        print_err(e.args[0])
+        running = False
 
-    find_name_by_id(cur, 1)
-
-    while True:
+    running = True;
+    while running:
         cmd = ""
         if len(sys.argv) > 1:
             cmd = sys.argv[1:]
@@ -195,7 +207,7 @@ if __name__ == '__main__':
         c = cmd[0]
 
         if c == "exit" or c == "quit" or c == "e" or c == "q":
-            break
+            running=False
 
         elif c == "help" or c == "h" or c == "?":
             print('''quit/exit                - exit program
@@ -214,6 +226,8 @@ list                     - list watched keywords''')
         elif c == "init":
             if ask("Are you sure?"):
                 try:
+                    cur.execute('''DELETE FROM sqlite_master
+                                   WHERE type = 'table';''');
                     cur.execute('''CREATE TABLE keyword
                                    (id INTEGER,
                                     name TEXT,
@@ -221,65 +235,65 @@ list                     - list watched keywords''')
                                     source TEXT,
                                     enabled BOOLEAN,
                                     PRIMARY KEY (id),
-                                    UNIQUE (name))''')
+                                    UNIQUE (name))''');
                     cur.execute('''CREATE TABLE memory
                                    (id INTEGER,
                                     value TEXT,
                                     date  INTEGER,
-                                    PRIMARY KEY (id,value))''')
+                                    PRIMARY KEY (id,value))''');
                     cur.execute('''CREATE TABLE filter
                                    (id INTEGER,
                                     value TEXT,
                                     exclude BOOLEAN,
-                                    PRIMARY KEY (id,value,exclude))''')
+                                    PRIMARY KEY (id,value,exclude))''');
                     con.commit();
                 except sqlite3.Error as e:
-                    print(e.args[0])
+                    print_err(e.args[0])
         elif c == "insert" or c == "ins" or c == "i":
             if len(cmd) >= 2:
                 try:
                     if len(cmd) == 2:
                         cur.execute("INSERT INTO keyword VALUES (NULL, '{0}', datetime('now'), "", 1)".format(str(cmd[1])));
                         con.commit();
-                        print("inserting \"{0}\" source: default".format(cmd[1]));
+                        print_ok("Inserting \"{0}\" source: default".format(cmd[1]));
                     elif len(cmd) == 3:
                         cur.execute("INSERT INTO keyword VALUES (NULL, '{0}', datetime('now'), '{1}', 1)".format(str(cmd[1]), str(cmd[2])));
                         con.commit();
-                        print("inserting \"{0}\" source: {1}".format(cmd[1],cmd[2]));
+                        print_ok("Inserting \"{0}\" source: {1}".format(cmd[1],cmd[2]));
                     else:
-                        print("too many arguments!");
+                        print_err("Too many arguments!");
                 except sqlite3.Error as e:
-                    print(e.args[0])
+                    print_err(e.args[0])
             else:
-                print("wrong synthax. use \"insert <name> (source)\"");
+                print("Wrong synthax. use \"insert <name> (source)\"");
         elif c == "update" or c == "up" or c == "u":
             if len(cmd) == 4:
                 try:
                     cur.execute("UPDATE keyword SET {1}='{2}' WHERE id={0}".format(str(cmd[1]), str(cmd[2])), str(cmd[3]));
                     con.commit();
-                    print("updating id \"{0}\".{1} = {2}".format(cmd[1],cmd[2],cmd[3]));
+                    print_ok("Updating id \"{0}\".{1} = {2}".format(cmd[1],cmd[2],cmd[3]));
                 except sqlite3.Error as e:
-                    print(e.args[0])
+                    print_err(e.args[0])
             else:
-                print("wrong synthax. use \"update <id> <opt> <val>\"");
-                print("<opt>: name, enable, source\"");
+                print_err("Wrong synthax. use \"update <id> <opt> <val>\"");
+                print_warn("<opt>: name, enable, source\"");
         elif c == "filter":
             if len(cmd) == 2:
                 try:
-                    print("Filters for {0}:".format(find_name_by_id(cur, cmd[1])));
+                    print_ok("Filters for {0}:".format(find_name_by_id(cur, cmd[1])));
                     for row in cur.execute("SELECT value,exclude FROM filter WHERE id={0}".format(str(cmd[1]))):
                         print("{0} exclude:{1}".format(row[0], row[1]))
                 except sqlite3.Error as e:
-                    print(e.args[0])
+                    print_err(e.args[0])
             elif len(cmd) == 4:
                 try:
                     cur.execute("INSERT INTO filter VALUES ('{0}', '{1}' , {2})".format(str(cmd[1]), str(cmd[2]), str(cmd[3])));
                     con.commit();
-                    print("new filter for id \"{0}\" keyword: \"{1}\" exclude: {2}".format(cmd[1],cmd[2],cmd[3]));
+                    print_ok("New filter for id \"{0}\" keyword: \"{1}\" exclude: {2}".format(cmd[1],cmd[2],cmd[3]));
                 except sqlite3.Error as e:
-                    print(e.args[0])
+                    print_err(e.args[0])
             else:
-                print("wrong synthax. use \"filter <id> <val> <0/1>\"");
+                print_err("Wrong synthax. use \"filter <id> <val> <0/1>\"");
         elif c == "delete" or c == "del" or c ==  "d":
             if len(cmd) == 2:
                 try:
@@ -287,11 +301,11 @@ list                     - list watched keywords''')
                     cur.execute("DELETE FROM memory WHERE id={0}".format(cmd[1].lower()))
                     cur.execute("DELETE FROM filter WHERE id={0}".format(cmd[1].lower()))
                     con.commit();
-                    print("deleting id \"{0}\" done".format(cmd[1]));
+                    print_ok("Deleting id \"{0}\" done".format(cmd[1]));
                 except sqlite3.Error as e:
-                    print(e.args[0])
+                    print_err(e.args[0])
             else:
-                print("wrong synthax. use \"delete <id>\"")
+                print_err("Wrong synthax. use \"delete <id>\"")
         elif c == "list" or c == "lst" or c == "l": # tabulate and show EXCLUDE{...}, INCLUDE{...}
             try:
                 for row in cur.execute('SELECT id,name,enabled,source FROM keyword ORDER BY name'):
@@ -300,14 +314,14 @@ list                     - list watched keywords''')
                     else:
                         print("{1}\tid:{0} source: {2} DISABLED".format(row[0], row[1], row[3]))
             except sqlite3.Error as e:
-                print(e.args[0])
+                print_err(e.args[0])
         elif c == "clear" or c == "clr":
             try:
                 cur.execute('DELETE FROM memory');
                 con.commit();
-                print("memory table cleared");
+                print_ok("Memory table cleared");
             except sqlite3.Error as e:
-                print(e.args[0])
+                print_err(e.args[0])
 
         elif c == "fetch" or c == "f":
             check_process(torrent_client);
@@ -316,9 +330,9 @@ list                     - list watched keywords''')
             if len(cmd) > 1 and cmd[1].isdigit():
                 check_pages_num = int(cmd[1])
 
-            print("checking eztv source...");
+            print_ok("Checking eztv source...");
             for i in range(0, check_pages_num):
-                print("page #{0}".format(i));
+                print_ok("page #{0}".format(i));
                 try:
                     eztv_url = "http://eztv.it/"; #'https://eztv.ch/', 'https://eztv-proxy.net/'
                     if i > 0:
@@ -336,16 +350,16 @@ list                     - list watched keywords''')
                                     if check_filter(cur, row[0], m):
                                         process_torrent(cur, m, "");
                     except Exception as e:
-                        print(e.args[0])
+                        print_err(e.args[0])
                         pass
                 except Exception as e:
-                    print(e.args[0])
+                    print_err(e.args[0])
                     pass
 
-            print("checking nyaa source...");
+            print_ok("Checking nyaa source...");
             nyaa_url = "http://www.nyaa.se/?page=search&cats=1_37&offset="
             for page in range(1, check_pages_num + 1):
-                print("page #" + str(page-1))
+                print_ok("page #" + str(page-1))
                 try:
                     req = Request(nyaa_url + str(page), headers={'User-Agent': 'Mozilla/5.0'})
                     data = urlopen(req, None, request_timeout).read()
@@ -361,16 +375,16 @@ list                     - list watched keywords''')
                                     if check_filter(cur, row[0], row[1]):
                                         process_torrent(cur, name, download_url);
                         except Sqlite3.error as e:
-                            print(e.args[0])
+                            print_err(e.args[0])
                             #pass
                 except Exception as e:
-                    print(e.args[0])
+                    print_err(e.args[0])
                     pass
             break;
-            print("checking showrss source..."); #TODO to be finished
+            print_ok("Checking showrss source..."); #TODO to be finished
             showrss_url = "http://showrss.info/other/all.rss"
             for page in range(1, check_pages_num + 1):
-                print("page #" + str(page-1))
+                print_ok("page #" + str(page-1))
                 try:
                     req = Request(showrss_url + str(page), headers={'User-Agent': 'Mozilla/5.0'})
                     data = urlopen(req, None, request_timeout).read()
@@ -379,12 +393,13 @@ list                     - list watched keywords''')
                     for elem in soup.find_all("link"):
                         link = ""
                 except Exception as e:
-                    print(e.arge[0])
+                    print_err(e.arge[0])
                     pass
         else:
-            print("type \"help\" for command list")
+            print_err("Please, type \"help\" for command list");
         if len(sys.argv) > 1:
            break
     cur.execute("DELETE FROM memory WHERE (strftime('%s','now') - date) > 15552000") # 6 months
     con.commit();
     con.close()
+    print_ok("bye bye!")
