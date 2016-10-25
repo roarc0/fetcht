@@ -10,10 +10,12 @@ from bs4 import BeautifulSoup
 
 __version__ = '0.1'
 
-db_location = os.getenv("HOME") +'/.local/fetcht.db'
+db_path = os.getenv("HOME") + '/.local/fetcht.db'
+dl_path = os.getenv("HOME")
 check_pages_num = 5
 torrent_client = 'deluge'
 request_timeout = 30
+manual_add = False
 
 def daemonize(name):
     """UNIX double fork mechanism."""
@@ -74,11 +76,18 @@ def load_magnet(magnet):
     execute("({0} \"{1}\") > /dev/null".format(torrent_client, magnet));
     return True;
 
-def download_torrent(url,filename): 
-    with urllib.request.urlopen(url) as response, open(filename, 'wb') as outf:
+def download_file(url, filename):
+    with urllib.request.urlopen(url) as response, open(os.getenv("HOME") + '/' + filename, 'wb') as outf:
         outf.write(response.read())
         outf.close()
     return True
+
+def ask(what):
+  res = input("{0} (y/N) ".format(what))
+  if res == "yes" or res == "y":
+    return True
+  else:
+    return False
 
 def find_name_by_id(cur, id):
     cur.execute("SELECT name FROM keyword WHERE id={0}".format(id));
@@ -91,36 +100,65 @@ def find_id_by_name(cur, name):
     res = cur.fetchone();
     return res[0];
 
-def check_filter(cur, str, id):
+def check_filter(cur, item, id):
     ret=True; # download file
 
     skip=True;
     count=0;
     for row_include in cur.execute('SELECT value FROM filter WHERE id={0} AND exclude=0'.format(row[0])):
         count+=1;
-        if str.find(row_include[0]) > 0:
+        if item.find(row_include[0]) > 0:
             skip=False;
 
     if count!=0 and skip:
-        print("filtering out {0}. include reason.".format(str));
+        print("filtering out {0}. include reason.".format(item));
         ret=False;
     else:
         skip=False;
     for row_exclude in cur.execute('SELECT value FROM filter WHERE id={0} AND exclude=1'.format(row[0])):
-        if str.find(row_exclude[0]) > 0:
+        if item.find(row_exclude[0]) > 0:
             skip=True;
     if skip:
-        print("filtering out {0}. exclude reason.".format(str));
+        print("filtering out {0}. exclude reason.".format(item));
         ret=False;
 
     return ret;
+
+def check_memory(cur, item):
+    count=0;
+    for row in cur.execute("SELECT * FROM memory WHERE value = '{0}'".format(str(item))):
+        count+=1;
+    if count == 0:
+        print("new torrent found: {1}\n".format(str(item)));
+        return True
+    else:
+        print("torrent already downloaded: {0}".format(str(item)));
+        return False
+
+def add_to_memory(cur, item):
+    cur.execute("INSERT INTO memory VALUES (NULL, '{0}', strftime('%s','now'))".format(str(item)));
+    con.commit();
+
+def process_torrent(cur, item, url):
+    if check_memory(cur, name):
+        if manual_add and (not ask("Do you want to load this torrent?")):
+            return
+
+        ret = False;
+        if url == "":
+            ret = load_magnet(item);
+        else:
+            ret = download_file(url, item + ".torrent")
+
+        if ret:
+            add_to_memory(cur, str(item));
 
 ################################################################################
 
 if __name__ == '__main__':
     print("fecht v{0} (hex0var) GPLv2".format(__version__))
 
-    con=sqlite3.connect(db_location)
+    con=sqlite3.connect(db_path)
     cur=con.cursor()
 
     find_name_by_id(cur, 1)
@@ -253,71 +291,37 @@ list                     - list watched keywords''')
 
         elif c == "fetch" or c == "f":
             check_process(torrent_client);
-            auto = True;
             if len(cmd) > 1 and cmd[1] == "manual":
-                auto = False;
+                manual_add = True;
             if len(cmd) > 1 and cmd[1].isdigit():
                 check_pages_num = int(cmd[1])
 
-            # process_sources
             print("checking eztv source...");
             for i in range(0, check_pages_num):
                 print("page #{0}".format(i))
-                #TODO test and switch to next mirror
-                eztv_url = 'http://eztv.it/' #'https://eztv.ch/', 'https://eztv-proxy.net/'
-                if i > 0:
-                    eztv_url = "{0}page_{1}".format(eztv_url,i)
+                try:
+                    eztv_url = 'http://eztv.it/' #'https://eztv.ch/', 'https://eztv-proxy.net/'
+                    if i > 0:
+                        eztv_url = "{0}page_{1}".format(eztv_url,i)
 
-                req = Request(eztv_url, headers={'User-Agent': 'Mozilla/5.0'})
-                data = urlopen(req, None, request_timeout).read()
-                regexp = re.compile("<a href=\"(magnet.+?)\"")
-                magnets = regexp.findall(str(data))
-
-                for m in magnets:
-                    m = m.strip()
+                    req = Request(eztv_url, headers={'User-Agent': 'Mozilla/5.0'})
+                    data = urlopen(req, None, request_timeout).read()
+                    regexp = re.compile("<a href=\"(magnet.+?)\"")
+                    magnets = regexp.findall(str(data))
                     try:
-                        for row in cur.execute('SELECT id,name FROM keyword WHERE enabled=1 AND source="eztv" ORDER BY name'):
-                            if m.find(row[1]) > 0 :
-                                #TODO function: check_filter(id, str)
-                                skip=True;
-                                count=0;
-                                for row_include in cur.execute('SELECT value FROM filter WHERE id={0} AND exclude=0'.format(row[0])):
-                                    count+=1;
-                                    if m.find(row_include[0]) > 0:
-                                        skip=False;
-                                if count!=0 and skip:
-                                    print("filtering out {0}. include reason.".format(m));
-                                    continue;
-                                else:
-                                    skip=False;
-                                for row_exclude in cur.execute('SELECT value FROM filter WHERE id={0} AND exclude=1'.format(row[0])):
-                                    if m.find(row_exclude[0]) > 0:
-                                        skip=True;
-                                if skip:
-                                    print("filtering out {0}. exclude reason.".format(m));
-                                    continue;
-
-                                #TODO general memory function
-                                count=0;
-                                for row in cur.execute("SELECT * FROM memory WHERE value = '{0}'".format(str(m))):
-                                    count+=1;
-                                if count == 0:
-                                    ret = False;
-                                    print("{0} torrent found -> {1}\n".format(row[1], m));
-                                    #TODO function askfor()
-                                    if not auto:
-                                        res = input("Do you want to load this torrent? (y/N) ")
-                                        if res == "yes" or res == "y":
-                                            ret = load_magnet(m);
-                                    else:
-                                        ret = load_magnet(m);
-                                    if ret:
-                                        cur.execute("INSERT INTO memory VALUES (NULL, '{0}', strftime('%s','now'))".format(str(m)));
-                                        con.commit();
-                                else:
-                                    print("already downloades TODO INFO");
-                    except sqlite3.Error as e:
+                        for m in magnets:
+                            m = m.strip()
+                            for row in cur.execute('SELECT id,name FROM keyword WHERE enabled=1 AND source="eztv" ORDER BY name'):
+                                if m.find(row[1]) > 0 :
+                                    if check_filter(cur, row[1], id):
+                                        process_torrent(cur, m, "");
+                    except Exception as e:
                         print(e.args[0])
+                        pass
+                except Exception as e:
+                    print(e.args[0])
+                    pass
+
             print("checking nyaa source...");
             nyaa_url = "http://www.nyaa.se/?page=search&cats=1_37&offset="
             for page in range(1, check_pages_num + 1):
@@ -326,44 +330,40 @@ list                     - list watched keywords''')
                     req = Request(nyaa_url + str(page), headers={'User-Agent': 'Mozilla/5.0'})
                     data = urlopen(req, None, request_timeout).read()
                     soup = BeautifulSoup(data, "lxml")
-                    soup = soup.find("table", {"class": "tlist"})    
+                    soup = soup.find("table", {"class": "tlist"})
                     for elem in soup.find_all("td", {"class", "tlistname"}):
                         link = elem.find("a")
                         name = link.get_text()
                         download_url = str(link.get('href')).replace("page=view", "page=download").replace("//www", "http://www")
-
                         try:
                             for row in cur.execute('SELECT id, name FROM keyword WHERE enabled=1 AND source="nyaa" ORDER BY name'):
                                 if row[1] in name:
-                                    if check_filter(cur,row[1],id) == 0:
-                                        continue;
-
-                                    found = 0;
-                                    for row in cur.execute("SELECT * FROM memory WHERE value = '{0}'".format(str(name))):
-                                        found = found + 1;
-                                    if found == 0:
-                                        ret = False;
-                                        if not auto:
-                                            res = input("Do you want to load this torrent? (y/N) ")
-                                            if res == "yes" or res == "y":
-                                                print("downloading... " + str(name) + " (" + str(download_url) +  ")")
-                                                ret = download_torrent(download_url, name + ".torrent")
-                                        else:
-                                            #TODO function download_url()
-                                            print("downloading... " + str(name) + " (" + str(download_url) +  ")")
-                                            ret = download_torrent(download_url, name + ".torrent")
-                                        if ret:
-                                            cur.execute("INSERT INTO memory VALUES (NULL, '{0}', strftime('%s','now'))".format(str(name)));
-                                            con.commit();
+                                    if check_filter(cur, row[1], id):
+                                        process_torrent(cur, name, download_url);
                         except Exception as e:
                             print(e.args[0])
                 except Exception as e:
                     print(e.args[0])
                     pass
+
+            print("checking showrss source..."); #TODO to be finished
+            showrss_url = "http://showrss.info/other/all.rss"
+            for page in range(1, check_pages_num + 1):
+                print("page #" + str(page-1))
+                try:
+                    req = Request(showrss_url + str(page), headers={'User-Agent': 'Mozilla/5.0'})
+                    data = urlopen(req, None, request_timeout).read()
+                    soup = BeautifulSoup(data, "lxml")
+                    soup = soup.find("item")
+                    for elem in soup.find_all("link"):
+                        link = ""
+                except Exception as e:
+                    print(e.arge[0])
+                    pass
         else:
             print("type \"help\" for command list")
         if len(sys.argv) > 1:
-            break
+           break
     cur.execute("DELETE FROM memory WHERE (strftime('%s','now') - date) > 15552000") # 6 months
     con.commit();
     con.close()
