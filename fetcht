@@ -88,7 +88,7 @@ def check_process(name):
         print_ok("Process {0} is running!".format(name));
     
 def load_process(name):
-    print_warn("Process not running, loading {0}!".format(name))
+    print_err("Process not running, loading {0}!".format(name))
     daemonize(name)
     sleep(1)
 
@@ -121,42 +121,49 @@ def ask(what):
       return False
 
 def find_name_by_id(cur, id):
-    cur.execute("SELECT name FROM keyword WHERE id={0}".format(id));
-    res = cur.fetchone();
-    return res[0];
+    try:
+        cur.execute("SELECT name FROM keyword WHERE id={0}".format(id));
+        res = cur.fetchone();
+        return res[0]
+    except sqlite3.Error as e:
+        print_err("find_name_by_id -> sqlite error: ", e.args[0]);
+        pass
+    return ""
 
 # use like
 def find_id_by_name(cur, name):
-    cur.execute("SELECT id FROM keyword WHERE name={0}".format(name));
-    res = cur.fetchone();
-    return res[0];
+    try:
+        cur.execute("SELECT id FROM keyword WHERE name={0}".format(name));
+        res = cur.fetchone();
+        return res[0]
+    except sqlite3.Error as e:
+        print_err("find_name_by_id -> sqlite error: ", e.args[0]);
+        pass
+    return -1
 
 def check_filter(cur, id, item):
-    ret=True; # download file
-    skip=True;
-    count=0;
-    for row_include in cur.execute("SELECT value FROM filter WHERE id={0} AND exclude=0".format(str(id))):
-        count+=1;
-        if item.find(row_include[0]) > 0:
-            skip=False;
+    try:
+        for row_include in cur.execute("SELECT value FROM filter WHERE id={0} AND exclude=0".format(str(id))):
+            if row_include[0] not in item:
+                print_warn("Filtering out:\n", "{0}.\ninclude reason \"{1}\" not found!\n".format(item, row_include[0]));
+                return False
 
-    if count!=0 and skip:
-        print_warn("Filtering out:\n", "{0}. include reason not found.\n".format(item));
-        ret=False;
-    else:
-        skip=False;
-    for row_exclude in cur.execute("SELECT value FROM filter WHERE id={0} AND exclude=1".format(str(id))):
-        if row_exclude[0] in item:
-            skip=True;
-    if skip:
-        print_warn("Filtering out:\n", "{0}. exclude reason.\n".format(item));
-        ret=False;
+        for row_exclude in cur.execute("SELECT value FROM filter WHERE id={0} AND exclude=1".format(str(id))):
+            if row_exclude[0] in item:
+                print_warn("Filtering out:\n", "{0}.\nexclude reason \"{1}\" found!\n".format(item, row_exclude[0]));
+                return False
+    except sqlite3.Error as e:
+      print_err("check_filter -> sqlite error: ", e.args[0])
+      print_err(item);
+    except Exception as e:
+      print_err("check_filter -> unknown error: ", e.args[0])
+      print_err(item);
 
-    return ret;
+    return True # Download file
 
 def check_memory(cur, item):
     count=0;
-    for row in cur.execute("SELECT * FROM memory WHERE value = '{0}'".format(str(item))):
+    for row_memory in cur.execute("SELECT * FROM memory WHERE value = '{0}'".format(str(item))):
         count+=1;
     if count == 0:
         print_ok("New torrent found:\n", "{0}\n".format(str(item)));
@@ -219,7 +226,7 @@ update  <id> <opt> <val> -
 enable  <id>             -
 disable <id>             -
 filter  <id>             -
-filter  <id> <val> <0/1> -
+filter  <id> <val> <0/1> - 1 includes, 0 filters out
 clear                    - clear downloaded memory
 fetch                    - fetch torrent magnets
 list                     - list watched keywords''')
@@ -332,34 +339,36 @@ list                     - list watched keywords''')
 
             print_ok("Checking eztv source...");
             for i in range(0, check_pages_num):
-                print_ok("page #{0}".format(i));
-                try:
-                    eztv_url = "http://eztv.it/"; #'https://eztv.ch/', 'https://eztv-proxy.net/'
-                    if i > 0:
-                        eztv_url = "{0}page_{1}".format(eztv_url,i);
+                print_ok("page #{0}\n".format(i));
 
+                eztv_url = "http://eztv.it/"; #'https://eztv.ch/', 'https://eztv-proxy.net/'
+                if i > 0:
+                    eztv_url = "{0}page_{1}".format(eztv_url,i);
+
+                try:
                     req = Request(eztv_url, headers={'User-Agent': 'Mozilla/5.0'});
                     data = urlopen(req, None, request_timeout).read();
                     regexp = re.compile("<a href=\"(magnet.+?)\"");
                     magnets = regexp.findall(str(data));
-                    try:
-                        for m in magnets:
-                            m = m.strip()
-                            for row in cur.execute('SELECT id,name FROM keyword WHERE enabled=1 AND source="eztv" ORDER BY name'):
-                                if m.find(row[1]) > 0 :
-                                    if check_filter(cur, row[0], m):
-                                        process_torrent(cur, m, "");
-                    except Exception as e:
-                        print_err(e.args[0])
-                        pass
                 except Exception as e:
+                    print_err(e.args[0])
+
+                try:
+                    for m in magnets:
+                        m = m.strip()
+                        for row_eztv in cur.execute('SELECT id,name FROM keyword WHERE enabled=1 AND source="eztv" ORDER BY name'):
+                            if row_eztv[1] in m:
+                                if check_filter(cur, row_eztv[0], m):
+                                    process_torrent(cur, m, "");
+                except sqlite3.Error as e:
                     print_err(e.args[0])
                     pass
 
             print_ok("Checking nyaa source...");
             nyaa_url = "http://www.nyaa.se/?page=search&cats=1_37&offset="
             for page in range(1, check_pages_num + 1):
-                print_ok("page #" + str(page-1))
+                print_ok("page #" + str(page-1) + "\n")
+
                 try:
                     req = Request(nyaa_url + str(page), headers={'User-Agent': 'Mozilla/5.0'})
                     data = urlopen(req, None, request_timeout).read()
@@ -370,31 +379,37 @@ list                     - list watched keywords''')
                         name = link.get_text()
                         download_url = str(link.get('href')).replace("page=view", "page=download").replace("//www", "http://www")
                         try:
-                            for row in cur.execute('SELECT id, name FROM keyword WHERE enabled=1 AND source="nyaa" ORDER BY name'):
-                                if row[1] in name:
-                                    if check_filter(cur, row[0], row[1]):
+                            for row_nyaa in cur.execute('SELECT id,name FROM keyword WHERE enabled=1 AND source="nyaa" ORDER BY name'):
+                                if len(row_nyaa) > 1 and row_nyaa[1] in str(name):
+                                    if check_filter(cur, row_nyaa[0], name):
                                         process_torrent(cur, name, download_url);
-                        except Sqlite3.error as e:
+                        except sqlite3.Error as e:
                             print_err(e.args[0])
-                            #pass
+                            pass
+                        except Exception as e:
+                          print_err("Unknown Error: ", e.args[0])
+                          print_err(name);
+                          print_err(row_nyaa[1])
+                          print_err(row_nyaa[0])
+                          pass
                 except Exception as e:
                     print_err(e.args[0])
                     pass
-            break;
-            print_ok("Checking showrss source..."); #TODO to be finished
-            showrss_url = "http://showrss.info/other/all.rss"
-            for page in range(1, check_pages_num + 1):
-                print_ok("page #" + str(page-1))
-                try:
-                    req = Request(showrss_url + str(page), headers={'User-Agent': 'Mozilla/5.0'})
-                    data = urlopen(req, None, request_timeout).read()
-                    soup = BeautifulSoup(data, "lxml")
-                    soup = soup.find("item")
-                    for elem in soup.find_all("link"):
-                        link = ""
-                except Exception as e:
-                    print_err(e.arge[0])
-                    pass
+            if 0:
+                print_ok("Checking showrss source..."); #TODO to be finished
+                showrss_url = "http://showrss.info/other/all.rss"
+                for page in range(1, check_pages_num + 1):
+                    print_ok("page #" + str(page-1) + "\n")
+                    try:
+                        req = Request(showrss_url + str(page), headers={'User-Agent': 'Mozilla/5.0'})
+                        data = urlopen(req, None, request_timeout).read()
+                        soup = BeautifulSoup(data, "lxml")
+                        soup = soup.find("item")
+                        for elem in soup.find_all("link"):
+                            link = ""
+                    except Exception as e:
+                        print_err(e.arge[0])
+                        pass
         else:
             print_err("Please, type \"help\" for command list");
         if len(sys.argv) > 1:
