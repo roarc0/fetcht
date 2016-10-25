@@ -8,9 +8,9 @@ from time import sleep
 from json import dumps
 from bs4 import BeautifulSoup
 
-__version__ = '0.1'
+__version__ = '0.2'
 
-db_path = os.getenv("HOME") + '/.local/fetcht.db'
+db_path = os.getenv("HOME") + '/.local/db/fetcht.db'
 dl_path = os.getenv("HOME")
 check_pages_num = 5
 torrent_client = 'deluge'
