@@ -212,8 +212,7 @@ clear                    - clear downloaded memory
 fetch                    - fetch torrent magnets
 list                     - list watched keywords''')
         elif c == "init":
-            res = input("Are you sure? (yes/NO) ")
-            if res == "yes" or res == "y":
+            if ask("Are you sure?"):
                 try:
                     cur.execute('''CREATE TABLE keyword
                                    (id INTEGER,
