@@ -17,6 +17,22 @@ torrent_client = 'deluge'
 request_timeout = 30
 manual_add = False
 
+class bcolors:
+    HEADER = '\033[95m'
+    OKBLUE = '\033[94m'
+    OKGREEN = '\033[92m'
+    WARNING = '\033[93m'
+    FAIL = '\033[91m'
+    ENDC = '\033[0m'
+
+    def disable(self):
+        self.HEADER = ''
+        self.OKBLUE = ''
+        self.OKGREEN = ''
+        self.WARNING = ''
+        self.FAIL = ''
+        self.ENDC = ''
+
 def daemonize(name):
     """UNIX double fork mechanism."""
     try:
@@ -74,20 +90,26 @@ def execute(command):
 
 def load_magnet(magnet):
     execute("({0} \"{1}\") > /dev/null".format(torrent_client, magnet));
-    return True;
+    return True
 
 def download_file(url, filename):
-    with urllib.request.urlopen(url) as response, open(os.getenv("HOME") + '/' + filename, 'wb') as outf:
-        outf.write(response.read())
-        outf.close()
+    try:
+        with urllib.request.urlopen(url) as response, open(os.getenv("HOME") + '/' + filename, 'wb') as outf:
+            outf.write(response.read());
+            outf.close();
+    except Exception as e:
+        print(bcolors.FAIL + "Error downloading file: " + bcolors.ENDC + e.args[0]);
+        pass;
+        return False
+
     return True
 
 def ask(what):
-  res = input("{0} (y/N) ".format(what))
-  if res == "yes" or res == "y":
-    return True
-  else:
-    return False
+    res = input("{0} (y/N) ".format(what))
+    if res == "yes" or res == "y":
+      return True
+    else:
+      return False
 
 def find_name_by_id(cur, id):
     cur.execute("SELECT name FROM keyword WHERE id={0}".format(id));
@@ -100,26 +122,25 @@ def find_id_by_name(cur, name):
     res = cur.fetchone();
     return res[0];
 
-def check_filter(cur, item, id):
+def check_filter(cur, id, item):
     ret=True; # download file
-
     skip=True;
     count=0;
-    for row_include in cur.execute('SELECT value FROM filter WHERE id={0} AND exclude=0'.format(row[0])):
+    for row_include in cur.execute("SELECT value FROM filter WHERE id={0} AND exclude=0".format(str(id))):
         count+=1;
         if item.find(row_include[0]) > 0:
             skip=False;
 
     if count!=0 and skip:
-        print("filtering out {0}. include reason.".format(item));
+        print(bcolors.WARNING + "filtering out:\n" + bcolors.ENDC + "{0}. include reason not found.\n".format(item));
         ret=False;
     else:
         skip=False;
-    for row_exclude in cur.execute('SELECT value FROM filter WHERE id={0} AND exclude=1'.format(row[0])):
-        if item.find(row_exclude[0]) > 0:
+    for row_exclude in cur.execute("SELECT value FROM filter WHERE id={0} AND exclude=1".format(str(id))):
+        if row_exclude[0] in item:
             skip=True;
     if skip:
-        print("filtering out {0}. exclude reason.".format(item));
+        print(bcolors.WARNING + "filtering out:\n" + bcolors.ENDC + "{0}. exclude reason.\n".format(item));
         ret=False;
 
     return ret;
@@ -129,10 +150,10 @@ def check_memory(cur, item):
     for row in cur.execute("SELECT * FROM memory WHERE value = '{0}'".format(str(item))):
         count+=1;
     if count == 0:
-        print("new torrent found: {1}\n".format(str(item)));
+        print(bcolors.OKBLUE + "new torrent found:\n" + bcolors.ENDC + "{0}\n".format(str(item)));
         return True
     else:
-        print("torrent already downloaded: {0}".format(str(item)));
+        print(bcolors.WARNING + "torrent already downloaded:\n" + bcolors.ENDC + "{0}\n".format(str(item)));
         return False
 
 def add_to_memory(cur, item):
@@ -140,7 +161,7 @@ def add_to_memory(cur, item):
     con.commit();
 
 def process_torrent(cur, item, url):
-    if check_memory(cur, name):
+    if check_memory(cur, item):
         if manual_add and (not ask("Do you want to load this torrent?")):
             return
 
@@ -151,7 +172,7 @@ def process_torrent(cur, item, url):
             ret = download_file(url, item + ".torrent")
 
         if ret:
-            add_to_memory(cur, str(item));
+            add_to_memory(cur, item);
 
 ################################################################################
 
@@ -246,7 +267,7 @@ list                     - list watched keywords''')
         elif c == "filter":
             if len(cmd) == 2:
                 try:
-                    print("Filters for {0}:".format(find_name_by_id(cmd[1])));
+                    print("Filters for {0}:".format(find_name_by_id(cur, cmd[1])));
                     for row in cur.execute("SELECT value,exclude FROM filter WHERE id={0}".format(str(cmd[1]))):
                         print("{0} exclude:{1}".format(row[0], row[1]))
                 except sqlite3.Error as e:
@@ -272,13 +293,13 @@ list                     - list watched keywords''')
                     print(e.args[0])
             else:
                 print("wrong synthax. use \"delete <id>\"")
-        elif c == "list" or c == "lst" or c == "l":
+        elif c == "list" or c == "lst" or c == "l": # tabulate and show EXCLUDE{...}, INCLUDE{...}
             try:
                 for row in cur.execute('SELECT id,name,enabled,source FROM keyword ORDER BY name'):
                     if row[2]:
-                        print("{1}\t\tid:{0} source: {2}".format(row[0], row[1], row[3]))
+                        print("{1}\tid:{0} source: {2}".format(row[0], row[1], row[3]))
                     else:
-                        print("{1}\t\tid:{0} source: {2} DISABLED".format(row[0], row[1], row[3]))
+                        print("{1}\tid:{0} source: {2} DISABLED".format(row[0], row[1], row[3]))
             except sqlite3.Error as e:
                 print(e.args[0])
         elif c == "clear" or c == "clr":
@@ -298,22 +319,22 @@ list                     - list watched keywords''')
 
             print("checking eztv source...");
             for i in range(0, check_pages_num):
-                print("page #{0}".format(i))
+                print("page #{0}".format(i));
                 try:
-                    eztv_url = 'http://eztv.it/' #'https://eztv.ch/', 'https://eztv-proxy.net/'
+                    eztv_url = "http://eztv.it/"; #'https://eztv.ch/', 'https://eztv-proxy.net/'
                     if i > 0:
-                        eztv_url = "{0}page_{1}".format(eztv_url,i)
+                        eztv_url = "{0}page_{1}".format(eztv_url,i);
 
-                    req = Request(eztv_url, headers={'User-Agent': 'Mozilla/5.0'})
-                    data = urlopen(req, None, request_timeout).read()
-                    regexp = re.compile("<a href=\"(magnet.+?)\"")
-                    magnets = regexp.findall(str(data))
+                    req = Request(eztv_url, headers={'User-Agent': 'Mozilla/5.0'});
+                    data = urlopen(req, None, request_timeout).read();
+                    regexp = re.compile("<a href=\"(magnet.+?)\"");
+                    magnets = regexp.findall(str(data));
                     try:
                         for m in magnets:
                             m = m.strip()
                             for row in cur.execute('SELECT id,name FROM keyword WHERE enabled=1 AND source="eztv" ORDER BY name'):
                                 if m.find(row[1]) > 0 :
-                                    if check_filter(cur, row[1], id):
+                                    if check_filter(cur, row[0], m):
                                         process_torrent(cur, m, "");
                     except Exception as e:
                         print(e.args[0])
@@ -338,14 +359,15 @@ list                     - list watched keywords''')
                         try:
                             for row in cur.execute('SELECT id, name FROM keyword WHERE enabled=1 AND source="nyaa" ORDER BY name'):
                                 if row[1] in name:
-                                    if check_filter(cur, row[1], id):
+                                    if check_filter(cur, row[0], row[1]):
                                         process_torrent(cur, name, download_url);
-                        except Exception as e:
+                        except Sqlite3.error as e:
                             print(e.args[0])
+                            #pass
                 except Exception as e:
                     print(e.args[0])
                     pass
-
+            break;
             print("checking showrss source..."); #TODO to be finished
             showrss_url = "http://showrss.info/other/all.rss"
             for page in range(1, check_pages_num + 1):
