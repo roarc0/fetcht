@@ -277,7 +277,8 @@ if __name__ == '__main__':
                                     exclude BOOLEAN,
                                     PRIMARY KEY (id,value,exclude))''');
                     con.commit();
-
+            elif c == "dump":
+                print_warn("not yet implemented...")
             elif c == "insert" or c == "ins" or c == "i": #TODO check valid source
                 if len(cmd) == 3:
                     cur.execute("INSERT INTO keyword VALUES (NULL, '{0}', datetime('now'), '{1}', 1)".format(str(cmd[1]), str(cmd[2])));
@@ -303,7 +304,7 @@ if __name__ == '__main__':
                     con.commit();
                     print_ok("New filter for \"{0}\" id:{1} keyword: \"{2}\" exclude: {3}".format(item_name, item_id,cmd[2],cmd[3]));
                 if len(cmd) >= 2:
-                    [item_id, item_name] = get_item(cur, cmd[1]);
+                    [item_id, item_name] = get_item(cur, cmd[1]); #TODO fix double warning
                     print_ok("Filters for {0} id:{1} ->".format(item_name, item_id));
                     for row in cur.execute("SELECT value,exclude FROM filter WHERE id={0}".format(str(item_id))):
                         print("{0} exclude:{1}".format(row[0], row[1]))
