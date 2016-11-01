@@ -9,7 +9,7 @@ from json import dumps
 from bs4 import BeautifulSoup
 from prettytable import PrettyTable
 
-__version__ = '0.3'
+__version__ = '0.3.1'
 
 db_path = os.getenv("HOME") + '/.local/db/fetcht.db'
 dl_path = os.getenv("HOME")
@@ -123,11 +123,14 @@ def ask(what):
 
 def find_name_by_id(cur, id):
     try:
-        cur.execute("SELECT name FROM keyword WHERE id={0}".format(id));
+        cur.execute("SELECT name FROM keyword WHERE id={0}".format(str(id)));
         res = cur.fetchone();
         return res[0]
     except sqlite3.Error as e:
         print_err("find_name_by_id -> sqlite error: ", str(e));
+        pass
+    except Exception as e:
+        print_err("find_id_by_name -> error: ", str(e))
         pass
     return ""
 
@@ -139,16 +142,29 @@ def find_id_by_name(cur, name):
     except sqlite3.Error as e:
         print_err("find_name_by_id -> sqlite error: ", str(e));
         pass
+    except Exception as e:
+        print_err("find_name_by_id -> error: ", str(e))
+        pass
     return -1
 
 def get_item(cur, value):
-    if not value.isdigit():
-        item_id = find_id_by_name(cur, cmd[1]);
-        item_name = find_name_by_id(cur, item_id);
-        print_warn("Recognized item \"{0}\" with id={1}".format(item_name,str(item_id)));
-    else:
-        item_id = value;
-        item_name = find_name_by_id(cur, item_id);
+    item_id = -1
+    item_name = ""
+    try:
+        if not value.isdigit():
+            item_id = find_id_by_name(cur, value);
+            item_name = find_name_by_id(cur, item_id);
+            if int(item_id) >=0:
+                print_warn("Recognized item \"{0}\" with id={1}".format(item_name,str(item_id)));
+        else:
+            item_id = value;
+            item_name = find_name_by_id(cur, item_id);
+    except sqlite3.Error as e:
+        print_err("get_item -> sqlite error: ", str(e));
+        pass
+    except Exception as e:
+        print_err("get_item -> error: ", str(e))
+        pass
     return item_id, item_name
 
 def check_filter(cur, id, item):
@@ -163,11 +179,11 @@ def check_filter(cur, id, item):
                 print_warn("Filtering out:\n", "{0}.\nexclude reason \"{1}\" found!\n".format(item, row_exclude[0]));
                 return False
     except sqlite3.Error as e:
-      print_err("check_filter -> sqlite error: ", str(e))
-      print_err(item);
+        print_err("check_filter -> sqlite error: ", str(e))
+        print_err(item);
     except Exception as e:
-      print_err("check_filter -> unknown error: ", str(e))
-      print_err(item);
+        print_err("check_filter -> error: ", str(e))
+        print_err(item);
 
     return True # Download file
 
@@ -183,16 +199,16 @@ def check_memory(cur, item):
             print_warn("Torrent already downloaded:\n", "{0}\n".format(str(item)));
             return False
     except sqlite3.Error as e:
-      print_err("check_memory -> sqlite error: ", str(e))
-      print_err(item);
+        print_err("check_memory -> sqlite error: ", str(e))
+        print_err(item);
 
 def add_to_memory(cur, item):
     try:
         cur.execute("INSERT INTO memory VALUES (NULL, '{0}', strftime('%s','now'))".format(str(item)));
         con.commit();
     except sqlite3.Error as e:
-      print_err("add_to_memory -> sqlite error: ", str(e))
-      print_err(item);
+        print_err("add_to_memory -> sqlite error: ", str(e))
+        print_err(item);
 
 def process_torrent(cur, item, url):
     if check_memory(cur, item):
@@ -241,15 +257,20 @@ if __name__ == '__main__':
                 x.padding_width = 1
 
                 x.add_row(["init","","Inits or resets the database"]);
-                x.add_row(["dump","","Dumps database to a file. [WIP]"]);
+                x.add_row(["dump","","[TODO] Dumps database to a file."]);
+                x.add_row(["schema","","Display database schema"]);
+                x.add_row(["query","<query>","[WIP] Execute raw query! warning!"]);
                 x.add_row(["clear","","Clear downloaded memory"]);
                 x.add_row(["insert","<name> <source>","Insert a new item"]);
                 x.add_row(["delete","<id/name>","Delete item by id"]);
                 x.add_row(["enable","<id/name>","Enable item"]);
                 x.add_row(["disable","<id/name>","Disable item"]);
                 x.add_row(["update","<id/name> <property> <value>","Update item's property: {name,date,source,enabled}"]);
-                x.add_row(["filter","<id/name>","Show filters for item"]);
-                x.add_row(["filter","<id/name> <filter_name> <0/1>","Filter item by filter name. 0 includes, 1 excludes."]);
+                x.add_row(["filter show","<id/name>","Show filters for item"]);
+                x.add_row(["filter del","<id/name>","Delete a filter for item"]);
+                x.add_row(["exclude","<id/name> <filter_val>","Filters out item containing filter_val."]);
+                x.add_row(["include","<id/name> <filter_val>","Requires out item containing filter_val."]);
+                x.add_row(["prompt","<id/name> <filter_val>","[TODO] Asks to continue if contains filter_val."]);
                 x.add_row(["fetch","<pages>","Fetch torrents"]);
                 x.add_row(["list","","List currently watched items"]);
                 print(x);
@@ -297,37 +318,64 @@ if __name__ == '__main__':
                     print_err("Wrong synthax. use \"update <id/name> <opt> <val>\"");
                     print_warn("<opt>: name, enabled, source\"");
 
-            elif c == "filter": #TODO table
-                if len(cmd) == 4:
+            elif c == "exclude" or c == "include":
+                if len(cmd) == 3:
+                    filter = True if c=="exclude" else False;
                     [item_id, item_name] = get_item(cur, cmd[1]);
-                    cur.execute("INSERT INTO filter VALUES ('{0}', '{1}' , {2})".format(str(item_id), str(cmd[2]), str(cmd[3])));
-                    con.commit();
-                    print_ok("New filter for \"{0}\" id:{1} keyword: \"{2}\" exclude: {3}".format(item_name, item_id,cmd[2],cmd[3]));
-                if len(cmd) >= 2:
-                    [item_id, item_name] = get_item(cur, cmd[1]); #TODO fix double warning
-                    print_ok("Filters for {0} id:{1} ->".format(item_name, item_id));
-                    for row in cur.execute("SELECT value,exclude FROM filter WHERE id={0}".format(str(item_id))):
-                        print("{0} exclude:{1}".format(row[0], row[1]))
+                    if int(item_id) >= 0:
+                        cur.execute("INSERT INTO filter VALUES ('{0}', '{1}' , {2})".format(str(item_id), str(cmd[2]), str(filter)));
+                        con.commit();
+                        print_ok("New filter for \"{0}\" id:{1} keyword: \"{2}\"".format(item_name, item_id, cmd[2]));
+                    else:
+                        print_err("Can't find \"{0}\" in database.".format(cmd[1]));
                 else:
                     print_err("Wrong synthax. use \"filter <id/name> <val> <0/1>\"");
 
-            elif c == "enable":
-                if len(cmd) == 2:
-                    [item_id, item_name] = get_item(cur, cmd[1]);
-                    cur.execute("UPDATE keyword SET enabled='1' WHERE id={0}".format(str(item_id)));
-                    con.commit();
-                    print_ok("Enabling \"{0}\" id:{1} done".format(item_name, item_id));
-                else:
-                    print_err("Wrong synthax. use \"disable <id/name>\"")
+            elif c == "filter": #TODO table
+                if len(cmd) >= 3:
+                    [item_id, item_name] = get_item(cur, cmd[2]);
+                    if int(item_id) >= 0:
+                        if cmd[1]=="show":
+                            print_ok("Filters for {0} id:{1} :".format(item_name, item_id));
+                            col_names=["Value", "Filter Type"];
+                            x = PrettyTable(col_names);
+                            x.padding_width = 1
 
-            elif c == "disable":
+                            for row in cur.execute("SELECT value,exclude FROM filter WHERE id={0}".format(str(item_id))):
+                                if row[1] == 0:
+                                    x.add_row([row[0], "EXCLUDE"]);
+                                else:
+                                    x.add_row([row[0], "INCLUDE"]);
+                            print(x)
+                        elif cmd[1]=="del":
+                            if len(cmd) == 4:
+                                cur.execute("DELETE FROM filter WHERE id={0} AND value={1}".format(str(item_id), cmd[3]));
+                                con.commit();
+                                print_ok("Deleting \"{0}\" filter for \"{1}\" id:{2}".format(cmd[3], item_name, item_id));
+                            else:
+                                print_err("Missing extra argument for this action: value to delete.");
+                        else:
+                            print_err("Unrecognized \"{0}\" action".format(cmd[1]));
+                    else:
+                        print_err("Can't find \"{0}\" in database.".format(cmd[2]));
+                else:
+                    print_err("Wrong synthax. use \"filters (show|del) <id/name> <val>\".\nuse include/exclude command to add new filters.");
+
+            elif c == "enable" or c == "disable":
                 if len(cmd) == 2:
                     [item_id, item_name] = get_item(cur, cmd[1]);
-                    cur.execute("UPDATE keyword SET enabled='0' WHERE id={0}".format(str(item_id)));
-                    con.commit();
-                    print_ok("Disabling \"{0}\" id:{1} done".format(item_name, item_id));
+                    if int(item_id) >= 0:
+                        action = True if c=="enable" else False;
+                        cur.execute("UPDATE keyword SET enabled='{0}' WHERE id={1}".format(action, str(item_id)));
+                        con.commit();
+                        if action:
+                            print_ok("Enabling \"{0}\" id:{1}".format(item_name, item_id));
+                        else:
+                            print_ok("Disabling \"{0}\" id:{1}".format(item_name, item_id));
+                    else:
+                        print_err("Can't find \"{0}\" id or name in database.".format(cmd[1]));
                 else:
-                    print_err("Wrong synthax. use \"disable <id/name>\"")
+                    print_err("Wrong synthax. use \"(enable|disable) <id/name>\"")
 
             elif c == "delete" or c == "del":
                 if len(cmd) == 2:
@@ -365,10 +413,25 @@ if __name__ == '__main__':
                     else:
                         print_ok("No results!");
 
-            elif c == "clear" or c == "clr": #TODO clear last x
-                    cur.execute('DELETE FROM memory');
+            elif c == "schema":
+                x = PrettyTable(["Table Name", "Primary Key", "Unique", "Fields"])
+                x.padding_width = 1
+                x.add_row(["keyword", "id", "name", "id, name, date, source, enabled"]);
+                x.add_row(["memory", "id,value", "", "id,value,date"]);
+                x.add_row(["filter", "id,value,exclude", "", "id, value,exclude"]);
+                print(x);
+
+            elif c == "query": # TODO handle output
+                if len(cmd) == 2:
+                    cur.execute(cmd[1]);
+                    
                     con.commit();
-                    print_ok("Memory table cleared");
+                    print_ok("Query executed!");
+
+            elif c == "clear" or c == "clr": #TODO clear last x
+                cur.execute('DELETE FROM memory');
+                con.commit();
+                print_ok("Memory table cleared");
 
             elif c == "fetch" or c == "f":
                 check_process(torrent_client);
@@ -396,7 +459,7 @@ if __name__ == '__main__':
                     for m in magnets:
                         m = m.strip()
                         for row_eztv in cur.execute('SELECT id,name FROM keyword WHERE enabled=1 AND source="eztv" ORDER BY name'):
-                            if row_eztv[1] in m:
+                            if len(row_eztv) > 1 and row_eztv[1] in m:
                                 if check_filter(cur, row_eztv[0], m):
                                     process_torrent(cur, m, "");
 
@@ -424,32 +487,35 @@ if __name__ == '__main__':
                         print_err("Error: ", str(e));
                         pass
 
-                if 0:
-                    print_ok("Checking showrss source..."); #TODO to be finished
-                    showrss_url = "http://showrss.info/other/all.rss";
+                print_ok("Checking showrss source..."); #TODO to be finished
+                showrss_url = "http://showrss.info/other/all.rss";
 
-                    for page in range(1, check_pages_num + 1):
-                        print_ok("page #" + str(page-1) + "\n");
+                #for page in range(1, check_pages_num + 1):
+                #    print_ok("page #" + str(page-1) + "\n");
 
-                        try:
-                            req = Request(showrss_url + str(page), headers={'User-Agent': 'Mozilla/5.0'});
-                            data = urlopen(req, None, request_timeout).read();
-                            soup = BeautifulSoup(data, "lxml");
-                            soup = soup.find("item");
-                            for elem in soup.find_all("link"):
-                                link = "";
-                        except Exception as e:
-                            print_err("Error: ", str(e));
-                            pass
+                try:
+                    req = Request(showrss_url, headers={'User-Agent': 'Mozilla/5.0'});
+                    data = urlopen(req, None, request_timeout).read();
+                    soup = BeautifulSoup(data, "xml");
+                    for elem in soup.find_all("item"):
+                        name = elem.find("title").get_text();
+                        magnet = elem.find("link").get_text();
+                        for row_showrss in cur.execute('SELECT id,name FROM keyword WHERE enabled=1 AND source="showrss" ORDER BY name'):
+                            if len(row_showrss) > 1 and row_showrss[1] in str(name):
+                                if check_filter(cur, row_showrss[0], name):
+                                    process_torrent(cur, magnet);
+                except Exception as e:
+                    print_err("Error: ", str(e));
+                    pass
 
             else:
-                print_err("Command not found", "Please, type \"help\" for command list");
+                print_err("Command not found!\n", "Please, type \"help\" for command list");
 
         except sqlite3.Error as e:
             print_err("main_loop -> sqlite error: ",str(e));
             pass
         except Exception as e:
-          print_err("Error: ", str(e));
+            print_err("main loop -> error: ", str(e));
 
         if len(sys.argv) > 1:
            running=False;
