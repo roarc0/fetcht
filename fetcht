@@ -1,526 +1,66 @@
 #!/usr/bin/env python3
 
-import sys, os, re
-import sqlite3, subprocess
-import urllib
-from urllib.request import Request, urlopen
-from time import sleep
-from json import dumps
-from bs4 import BeautifulSoup
-from prettytable import PrettyTable
+import sys, getopt
 
-__version__ = '0.3.1'
+from prettyprint import *
+from fetcht_core import *
 
-db_path = os.getenv("HOME") + '/.local/db/fetcht.db'
-dl_path = os.getenv("HOME")
-check_pages_num = 5
-torrent_client = 'deluge'
-request_timeout = 30
-manual_add = False
+__program_name__ = "fetcht"
+__version__ = '0.4'
 
-class bcolors:
-    HEADER = '\033[95m'
-    OKBLUE = '\033[94m'
-    OKGREEN = '\033[92m'
-    WARNING = '\033[93m'
-    FAIL = '\033[91m'
-    ENDC = '\033[0m'
+def load_cmd(core, cmd):
+    print_info("Loading command prompt");
+    prompt = True if cmd in ["",[]] else False
 
-    def disable(self):
-        self.HEADER = ''
-        self.OKBLUE = ''
-        self.OKGREEN = ''
-        self.WARNING = ''
-        self.FAIL = ''
-        self.ENDC = ''
-
-def print_ok(header, message=""):
-    print(bcolors.HEADER + "*** " + bcolors.OKBLUE + header + bcolors.ENDC + message);
-
-def print_warn(header, message=""):
-    print(bcolors.HEADER + "*** " + bcolors.WARNING + header + bcolors.ENDC + message);
-
-def print_err(header, message="" ):
-    print(bcolors.HEADER + "*** " + bcolors.FAIL + header + bcolors.ENDC + message);
-
-def daemonize(name):
-    """UNIX double fork mechanism."""
-    try:
-        pid = os.fork()
-        if pid > 0:
-            return # exit first parent
-    except OSError as err:
-        sys.stderr.write('fork #1 failed: {0}\n'.format(err))
-        sys.exit(1)
-
-    os.chdir('/') # decouple from parent environment
-    os.setsid()
-    os.umask(0)
-
-    try:
-        pid = os.fork() # do second fork
-        if pid > 0:
-            sys.exit(0) # exit from second parent
-    except OSError as err:
-        sys.stderr.write('fork #2 failed: {0}\n'.format(err))
-        sys.exit(1)
-
-    sys.stdout.flush() # redirect standard file descriptors
-    sys.stderr.flush()
-    si = open(os.devnull, 'r')
-    so = open(os.devnull, 'a+')
-    se = open(os.devnull, 'a+')
-
-    os.dup2(si.fileno(), sys.stdin.fileno())
-    os.dup2(so.fileno(), sys.stdout.fileno())
-    os.dup2(se.fileno(), sys.stderr.fileno())
-    os.spawnlp(os.P_NOWAIT, name, name)
-
-def check_process(name):
-    ps= subprocess.Popen("ps -A | awk '/" + name + "/{print \"1\";exit}'",
-                          shell=True, stdout=subprocess.PIPE)
-    output = ps.stdout.read()
-    ps.stdout.close()
-    ps.wait()
-    if  output != b'1\n':
-        load_process(name);
-        check_process(name);
-    else:
-        print_ok("Process {0} is running!".format(name));
-    
-def load_process(name):
-    print_err("Process not running, loading {0}!".format(name))
-    daemonize(name)
-    sleep(1)
-
-def execute(command):
-    p = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE);
-    output, errors = p.communicate();
-    return str(output.decode("ascii"));
-
-def load_magnet(magnet):
-    execute("({0} \"{1}\") > /dev/null".format(torrent_client, magnet));
-    return True
-
-def download_file(url, filename):
-    try:
-        with urllib.request.urlopen(url) as response, open(os.getenv("HOME") + '/' + filename, 'wb') as outf:
-            outf.write(response.read());
-            outf.close();
-    except Exception as e:
-        print_err("download_file -> error downloading file: ", str(e));
-        pass;
-        return False
-
-    return True
-
-def ask(what):
-    res = input("{0} (y/N) ".format(what))
-    if res == "yes" or res == "y":
-      return True
-    else:
-      return False
-
-def find_name_by_id(cur, id):
-    try:
-        cur.execute("SELECT name FROM keyword WHERE id={0}".format(str(id)));
-        res = cur.fetchone();
-        return res[0]
-    except sqlite3.Error as e:
-        print_err("find_name_by_id -> sqlite error: ", str(e));
-        pass
-    except Exception as e:
-        print_err("find_id_by_name -> error: ", str(e))
-        pass
-    return ""
-
-def find_id_by_name(cur, name):
-    try:
-        cur.execute("SELECT id FROM keyword WHERE name LIKE '%{0}%'".format(name));
-        res = cur.fetchone();
-        return res[0]
-    except sqlite3.Error as e:
-        print_err("find_name_by_id -> sqlite error: ", str(e));
-        pass
-    except Exception as e:
-        print_err("find_name_by_id -> error: ", str(e))
-        pass
-    return -1
-
-def get_item(cur, value):
-    item_id = -1
-    item_name = ""
-    try:
-        if not value.isdigit():
-            item_id = find_id_by_name(cur, value);
-            item_name = find_name_by_id(cur, item_id);
-            if int(item_id) >=0:
-                print_warn("Recognized item \"{0}\" with id={1}".format(item_name,str(item_id)));
-        else:
-            item_id = value;
-            item_name = find_name_by_id(cur, item_id);
-    except sqlite3.Error as e:
-        print_err("get_item -> sqlite error: ", str(e));
-        pass
-    except Exception as e:
-        print_err("get_item -> error: ", str(e))
-        pass
-    return item_id, item_name
-
-def check_filter(cur, id, item):
-    try:
-        for row_include in cur.execute("SELECT value FROM filter WHERE id={0} AND exclude=0".format(str(id))):
-            if row_include[0] not in item:
-                print_warn("Filtering out:\n", "{0}.\ninclude reason \"{1}\" not found!\n".format(item, row_include[0]));
-                return False
-
-        for row_exclude in cur.execute("SELECT value FROM filter WHERE id={0} AND exclude=1".format(str(id))):
-            if row_exclude[0] in item:
-                print_warn("Filtering out:\n", "{0}.\nexclude reason \"{1}\" found!\n".format(item, row_exclude[0]));
-                return False
-    except sqlite3.Error as e:
-        print_err("check_filter -> sqlite error: ", str(e))
-        print_err(item);
-    except Exception as e:
-        print_err("check_filter -> error: ", str(e))
-        print_err(item);
-
-    return True # Download file
-
-def check_memory(cur, item):
-    count=0;
-    try:
-        for row_memory in cur.execute("SELECT * FROM memory WHERE value = '{0}'".format(str(item))):
-            count+=1;
-        if count == 0:
-            print_ok("New torrent found:\n", "{0}\n".format(str(item)));
-            return True
-        else:
-            print_warn("Torrent already downloaded:\n", "{0}\n".format(str(item)));
-            return False
-    except sqlite3.Error as e:
-        print_err("check_memory -> sqlite error: ", str(e))
-        print_err(item);
-
-def add_to_memory(cur, item):
-    try:
-        cur.execute("INSERT INTO memory VALUES (NULL, '{0}', strftime('%s','now'))".format(str(item)));
-        con.commit();
-    except sqlite3.Error as e:
-        print_err("add_to_memory -> sqlite error: ", str(e))
-        print_err(item);
-
-def process_torrent(cur, item, url):
-    if check_memory(cur, item):
-        if manual_add and (not ask("Do you want to load this torrent?")):
-            return
-        ret = False;
-        if url == "":
-            ret = load_magnet(item);
-        else:
-            ret = download_file(url, item + ".torrent")
-
-        if ret:
-            add_to_memory(cur, item);
-
-################################################################################
-
-if __name__ == '__main__':
-    print_ok("fecht v{0} (hex0var) GPLv2".format(__version__) + "\n");
-
-    try:
-        con=sqlite3.connect(db_path);
-        cur=con.cursor();
-    except Exception as e:
-        print_err("Error opening db: ", str(e));
-        running = False;
-
-    running = True;
-    while running:
-        cmd = ""
-        if len(sys.argv) > 1:
-            cmd = sys.argv[1:]
-        else:
+    while core.status:
+        if prompt:
             raw = input("> ")
             cmd = raw.split(" ")
+        else:
+            core.status = False
 
-        c = cmd[0]
-        try:
-            if c == "exit" or c == "quit" or c == "e" or c == "q":
-                running=False
+        core.process_command(cmd)
 
-            elif c == "help" or c == "h" or c == "?":
-                col_names=["Command", "Parameters", "Description"];
-                x = PrettyTable(col_names);
-                x.align[col_names[1]] = "l"
-                x.align[col_names[2]] = "l"
-                x.padding_width = 1
+def load_gui(core):
+    print_info("Loading gui");
 
-                x.add_row(["init","","Inits or resets the database"]);
-                x.add_row(["dump","","[TODO] Dumps database to a file."]);
-                x.add_row(["schema","","Display database schema"]);
-                x.add_row(["query","<query>","[WIP] Execute raw query! warning!"]);
-                x.add_row(["clear","","Clear downloaded memory"]);
-                x.add_row(["insert","<name> <source>","Insert a new item"]);
-                x.add_row(["delete","<id/name>","Delete item by id"]);
-                x.add_row(["enable","<id/name>","Enable item"]);
-                x.add_row(["disable","<id/name>","Disable item"]);
-                x.add_row(["update","<id/name> <property> <value>","Update item's property: {name,date,source,enabled}"]);
-                x.add_row(["filter show","<id/name>","Show filters for item"]);
-                x.add_row(["filter del","<id/name>","Delete a filter for item"]);
-                x.add_row(["exclude","<id/name> <filter_val>","Filters out item containing filter_val."]);
-                x.add_row(["include","<id/name> <filter_val>","Requires out item containing filter_val."]);
-                x.add_row(["prompt","<id/name> <filter_val>","[TODO] Asks to continue if contains filter_val."]);
-                x.add_row(["fetch","<pages>","Fetch torrents"]);
-                x.add_row(["list","","List currently watched items"]);
-                print(x);
+def usage(): # prettytable
+    print_info("""Usage:\n
+    --help    -h : you already know this one.
+    --silent  -s  : verbosity off
+    --gui     -g : load gui
+    --cmd     -c : load command prompt\n
+    if none of the above is specified it will try to execute arglist to the database prompt
+    """)
 
-            elif c == "init":
-                if ask("This will reset the entire database, are you sure?"):
-                    cur.execute('''DELETE FROM sqlite_master
-                                   WHERE type = 'table';''');
-                    cur.execute('''CREATE TABLE keyword
-                                   (id INTEGER,
-                                    name TEXT,
-                                    date TEXT,
-                                    source TEXT,
-                                    enabled BOOLEAN,
-                                    PRIMARY KEY (id),
-                                    UNIQUE (name))''');
-                    cur.execute('''CREATE TABLE memory
-                                   (id INTEGER,
-                                    value TEXT,
-                                    date  INTEGER,
-                                    PRIMARY KEY (id,value))''');
-                    cur.execute('''CREATE TABLE filter
-                                   (id INTEGER,
-                                    value TEXT,
-                                    exclude BOOLEAN,
-                                    PRIMARY KEY (id,value,exclude))''');
-                    con.commit();
-            elif c == "dump":
-                print_warn("not yet implemented...")
-            elif c == "insert" or c == "ins" or c == "i": #TODO check valid source
-                if len(cmd) == 3:
-                    cur.execute("INSERT INTO keyword VALUES (NULL, '{0}', datetime('now'), '{1}', 1)".format(str(cmd[1]), str(cmd[2])));
-                    con.commit();
-                    print_ok("Inserting \"{0}\" source: {1}. id: {2}".format(cmd[1],cmd[2], find_id_by_name(cur,cmd[1])));
-                else:
-                    print("Wrong synthax. use \"insert <name> <source>\"\nname: name of the series. be careful to match the exact name in magnet or link name.\nsource: one of \{eztv,nyaa\}");
+def main():
+    print_info("{0} v{1} (hex0var) GPLv2\n".format(__program_name__, __version__));
 
-            elif c == "update" or c == "up" or c == "u":
-                if len(cmd) == 4:
-                    [item_id, item_name] = get_item(cur, cmd[1]);
-                    cur.execute("UPDATE keyword SET {1}='{2}' WHERE id={0}".format(str(item_id), str(cmd[2]), str(cmd[3])));
-                    con.commit();
-                    print_ok("Updating \"{0}\" id:{1} -> {2} = {3}".format(item_name, item_id, cmd[2], cmd[3]));
-                else:
-                    print_err("Wrong synthax. use \"update <id/name> <opt> <val>\"");
-                    print_warn("<opt>: name, enabled, source\"");
+    core = fetcht_core();
+    
+    try:
+        opts, args = getopt.getopt(sys.argv[1:], "hsgc", ["help","silent", "gui", "cmd"])
+    except getopt.GetoptError as err:
+        print_err(err)
+        sys.exit(2)
 
-            elif c == "exclude" or c == "include":
-                if len(cmd) == 3:
-                    filter = True if c=="exclude" else False;
-                    [item_id, item_name] = get_item(cur, cmd[1]);
-                    if int(item_id) >= 0:
-                        cur.execute("INSERT INTO filter VALUES ('{0}', '{1}' , {2})".format(str(item_id), str(cmd[2]), str(filter)));
-                        con.commit();
-                        print_ok("New filter for \"{0}\" id:{1} keyword: \"{2}\"".format(item_name, item_id, cmd[2]));
-                    else:
-                        print_err("Can't find \"{0}\" in database.".format(cmd[1]));
-                else:
-                    print_err("Wrong synthax. use \"filter <id/name> <val> <0/1>\"");
+    verbose = True
+    parsed = False
+    for o, param in opts:
+        parsed = True
+        if o in ("-s", "--silent"):
+            verbose = False
+        elif o in ("-h", "--help"):
+            usage()
+        elif o in ("-g", "--gui"):
+            load_gui()
+        elif o in ("-c", "--cmd"):
+            load_cmd(core, "")
 
-            elif c == "filter": #TODO table
-                if len(cmd) >= 3:
-                    [item_id, item_name] = get_item(cur, cmd[2]);
-                    if int(item_id) >= 0:
-                        if cmd[1]=="show":
-                            print_ok("Filters for {0} id:{1} :".format(item_name, item_id));
-                            col_names=["Value", "Filter Type"];
-                            x = PrettyTable(col_names);
-                            x.padding_width = 1
+    if not parsed:
+        load_cmd(core, sys.argv[1:])
 
-                            for row in cur.execute("SELECT value,exclude FROM filter WHERE id={0}".format(str(item_id))):
-                                if row[1] == 0:
-                                    x.add_row([row[0], "EXCLUDE"]);
-                                else:
-                                    x.add_row([row[0], "INCLUDE"]);
-                            print(x)
-                        elif cmd[1]=="del":
-                            if len(cmd) == 4:
-                                cur.execute("DELETE FROM filter WHERE id={0} AND value={1}".format(str(item_id), cmd[3]));
-                                con.commit();
-                                print_ok("Deleting \"{0}\" filter for \"{1}\" id:{2}".format(cmd[3], item_name, item_id));
-                            else:
-                                print_err("Missing extra argument for this action: value to delete.");
-                        else:
-                            print_err("Unrecognized \"{0}\" action".format(cmd[1]));
-                    else:
-                        print_err("Can't find \"{0}\" in database.".format(cmd[2]));
-                else:
-                    print_err("Wrong synthax. use \"filters (show|del) <id/name> <val>\".\nuse include/exclude command to add new filters.");
+    core.close();
 
-            elif c == "enable" or c == "disable":
-                if len(cmd) == 2:
-                    [item_id, item_name] = get_item(cur, cmd[1]);
-                    if int(item_id) >= 0:
-                        action = True if c=="enable" else False;
-                        cur.execute("UPDATE keyword SET enabled='{0}' WHERE id={1}".format(action, str(item_id)));
-                        con.commit();
-                        if action:
-                            print_ok("Enabling \"{0}\" id:{1}".format(item_name, item_id));
-                        else:
-                            print_ok("Disabling \"{0}\" id:{1}".format(item_name, item_id));
-                    else:
-                        print_err("Can't find \"{0}\" id or name in database.".format(cmd[1]));
-                else:
-                    print_err("Wrong synthax. use \"(enable|disable) <id/name>\"")
-
-            elif c == "delete" or c == "del":
-                if len(cmd) == 2:
-                    [item_id, item_name] = get_item(cur, cmd[1]);
-                    cur.execute("DELETE FROM keyword WHERE id={0}".format(item_id));
-                    cur.execute("DELETE FROM memory WHERE id={0}".format(item_id));
-                    cur.execute("DELETE FROM filter WHERE id={0}".format(item_id));
-                    con.commit();
-                    print_ok("Deleting \"{0}\" id:{1} done".format(item_name, item_id));
-                else:
-                    print_err("Wrong synthax. use \"delete <id/name>\"")
-
-            elif c == "list" or c == "ls" or c == "l": #TODO show EXCLUDE{...}, INCLUDE{...}
-                if len(cmd) == 2:
-                    print_ok("searching for elements containing \"{0}\"\n".format(cmd[1]));
-                    search_str = cmd[1];
-                else:
-                    search_str = "";
-
-                for row in cur.execute("SELECT id,name,enabled,source FROM keyword WHERE name LIKE '%{0}%' ORDER BY name".format(search_str)):
-                    col_names = [cn[0] for cn in cur.description]
-                    rows_ls = cur.fetchall()
-                    x = PrettyTable(col_names)
-                    x.align[col_names[1]] = "l"
-                    x.align[col_names[2]] = "r"
-                    x.padding_width = 1
-
-                    count = 0
-                    for row in rows_ls:
-                        count+=1
-                        x.add_row(row)
-
-                    if count > 0:
-                        print (x)
-                    else:
-                        print_ok("No results!");
-
-            elif c == "schema":
-                x = PrettyTable(["Table Name", "Primary Key", "Unique", "Fields"])
-                x.padding_width = 1
-                x.add_row(["keyword", "id", "name", "id, name, date, source, enabled"]);
-                x.add_row(["memory", "id,value", "", "id,value,date"]);
-                x.add_row(["filter", "id,value,exclude", "", "id, value,exclude"]);
-                print(x);
-
-            elif c == "query": # TODO handle output
-                if len(cmd) == 2:
-                    cur.execute(cmd[1]);
-                    
-                    con.commit();
-                    print_ok("Query executed!");
-
-            elif c == "clear" or c == "clr": #TODO clear last x
-                cur.execute('DELETE FROM memory');
-                con.commit();
-                print_ok("Memory table cleared");
-
-            elif c == "fetch" or c == "f":
-                check_process(torrent_client);
-                if len(cmd) > 1 and cmd[1] == "manual":
-                    manual_add = True;
-                if len(cmd) > 1 and cmd[1].isdigit():
-                    check_pages_num = int(cmd[1])
-
-                print_ok("Checking eztv source...");
-                for i in range(0, check_pages_num):
-                    print_ok("page #{0}\n".format(i));
-
-                    eztv_url = "http://eztv.it/"; #'https://eztv.ch/', 'https://eztv-proxy.net/'
-                    if i > 0:
-                        eztv_url = "{0}page_{1}".format(eztv_url,i);
-
-                    try:
-                        req = Request(eztv_url, headers={'User-Agent': 'Mozilla/5.0'});
-                        data = urlopen(req, None, request_timeout).read();
-                        regexp = re.compile("<a href=\"(magnet.+?)\"");
-                        magnets = regexp.findall(str(data));
-                    except Exception as e:
-                        print_err(str(e))
-
-                    for m in magnets:
-                        m = m.strip()
-                        for row_eztv in cur.execute('SELECT id,name FROM keyword WHERE enabled=1 AND source="eztv" ORDER BY name'):
-                            if len(row_eztv) > 1 and row_eztv[1] in m:
-                                if check_filter(cur, row_eztv[0], m):
-                                    process_torrent(cur, m, "");
-
-                print_ok("Checking nyaa source...");
-                nyaa_url = "http://www.nyaa.se/?page=search&cats=1_37&offset="
-                for page in range(1, check_pages_num + 1):
-                    print_ok("page #" + str(page-1) + "\n");
-
-                    try:
-                        req = Request(nyaa_url + str(page), headers={'User-Agent': 'Mozilla/5.0'})
-                        data = urlopen(req, None, request_timeout).read()
-                        soup = BeautifulSoup(data, "lxml")
-                        soup = soup.find("table", {"class": "tlist"})
-
-                        for elem in soup.find_all("td", {"class", "tlistname"}):
-                            link = elem.find("a");
-                            name = link.get_text();
-                            download_url = str(link.get('href')).replace("page=view", "page=download").replace("//www", "http://www");
-
-                            for row_nyaa in cur.execute('SELECT id,name FROM keyword WHERE enabled=1 AND source="nyaa" ORDER BY name'):
-                                if len(row_nyaa) > 1 and row_nyaa[1] in str(name):
-                                    if check_filter(cur, row_nyaa[0], name):
-                                        process_torrent(cur, name, download_url);
-                    except Exception as e:
-                        print_err("Error: ", str(e));
-                        pass
-
-                print_ok("Checking showrss source..."); #TODO to be finished
-                showrss_url = "http://showrss.info/other/all.rss";
-
-                #for page in range(1, check_pages_num + 1):
-                #    print_ok("page #" + str(page-1) + "\n");
-
-                try:
-                    req = Request(showrss_url, headers={'User-Agent': 'Mozilla/5.0'});
-                    data = urlopen(req, None, request_timeout).read();
-                    soup = BeautifulSoup(data, "xml");
-                    for elem in soup.find_all("item"):
-                        name = elem.find("title").get_text();
-                        magnet = elem.find("link").get_text();
-                        for row_showrss in cur.execute('SELECT id,name FROM keyword WHERE enabled=1 AND source="showrss" ORDER BY name'):
-                            if len(row_showrss) > 1 and row_showrss[1] in str(name):
-                                if check_filter(cur, row_showrss[0], name):
-                                    process_torrent(cur, magnet);
-                except Exception as e:
-                    print_err("Error: ", str(e));
-                    pass
-
-            else:
-                print_err("Command not found!\n", "Please, type \"help\" for command list");
-
-        except sqlite3.Error as e:
-            print_err("main_loop -> sqlite error: ",str(e));
-            pass
-        except Exception as e:
-            print_err("main loop -> error: ", str(e));
-
-        if len(sys.argv) > 1:
-           running=False;
-
-    cur.execute("DELETE FROM memory WHERE (strftime('%s','now') - date) > 15552000"); # 6 months
-    con.commit();
-    con.close();
-    print_ok("bye bye!");
+if __name__ == '__main__':
+    main();
