@@ -364,7 +364,7 @@ class fetcht_core:
                 self.clean_memory(True);
                 print_info("Memory table cleared");
 
-            elif c ["fetch", "f"]:
+            elif c in ["fetch", "f"]:
                 check_process(torrent_client);
                 if len(cmd) > 1 and cmd[1] == "manual":
                     self.manual_add = True;
