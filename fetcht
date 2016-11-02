@@ -4,6 +4,7 @@ import sys, getopt
 
 from prettyprint import *
 from fetcht_core import *
+from fetcht_gui import *
 
 __program_name__ = "fetcht"
 __version__ = '0.4'
@@ -20,9 +21,6 @@ def load_cmd(core, cmd):
             core.status = False
 
         core.process_command(cmd)
-
-def load_gui(core):
-    print_info("Loading gui");
 
 def usage(): # prettytable
     print_info("""Usage:\n
@@ -53,7 +51,7 @@ def main():
         elif o in ("-h", "--help"):
             usage()
         elif o in ("-g", "--gui"):
-            load_gui()
+            load_gui(core)
         elif o in ("-c", "--cmd"):
             load_cmd(core, "")
 

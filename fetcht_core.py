@@ -184,8 +184,8 @@ class fetcht_core:
     def search(self, source, enabled):
         return self.cur.execute("SELECT id,name FROM keyword WHERE enabled={1} AND source=\"{0}\" ORDER BY name".format(str(source), int(enabled)))
 
-    def list(self, sstring):
-        return self.cur.execute("SELECT id,name,enabled,source FROM keyword WHERE name LIKE '%{0}%' ORDER BY name".format(sstring))
+    def list(self, sstring=""):
+        return self.cur.execute("SELECT id,name,source,enabled FROM keyword WHERE name LIKE '%{0}%' ORDER BY name".format(sstring))
 
     def get_cursor(self):
         return self.cur
