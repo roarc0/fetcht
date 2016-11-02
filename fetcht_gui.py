@@ -4,6 +4,7 @@ from gi.repository import Gtk, Gio
 
 from prettyprint import *
 from fetcht_core import *
+from fetcht_gui_add import *
 
 guiTitle = "fetcht v0.4"
 
@@ -29,9 +30,19 @@ class FetchtWindow(Gtk.Window):
         box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
         Gtk.StyleContext.add_class(box.get_style_context(), "linked")
 
-        #button = Gtk.Button()
-        #button.add(Gtk.Arrow(Gtk.ArrowType.LEFT, Gtk.ShadowType.NONE))
-        #box.add(button)
+        button = Gtk.Button("Add")
+        icon = Gio.ThemedIcon(name="list-add")
+        image = Gtk.Image.new_from_gicon(icon, Gtk.IconSize.BUTTON)
+        button.add(image)
+        button.connect("clicked", self.on_add_button_clicked)
+        box.add(button)
+
+        button = Gtk.Button("Remove")
+        icon = Gio.ThemedIcon(name="list-remove")
+        image = Gtk.Image.new_from_gicon(icon, Gtk.IconSize.BUTTON)
+        button.add(image)
+        button.connect("clicked", self.on_remove_button_clicked)
+        box.add(button)
 
         #button = Gtk.Button()
         #button.add(Gtk.Arrow(Gtk.ArrowType.RIGHT, Gtk.ShadowType.NONE))
@@ -45,8 +56,8 @@ class FetchtWindow(Gtk.Window):
         self.add(self.grid)
 
         self.item_liststore = Gtk.ListStore(int, str, str, bool)
-        item_list = core.list()
-        for item_ref in item_list:
+        self.item_list = core.list()
+        for item_ref in self.item_list:
             self.item_liststore.append(list(item_ref))
 
         self.current_filter_source = "all"
@@ -102,6 +113,28 @@ class FetchtWindow(Gtk.Window):
         """Called on any of the button clicks"""
         self.current_filter_source = widget.get_label()
         self.filter.refilter()
+
+    def on_remove_button_clicked(self, widget):
+        """Called add button clicks"""
+        model, treeiter = self.treeview.get_selection().get_selected()
+        if treeiter != None:
+           self.core.delete(model[treeiter][0])
+           for row in self.item_liststore:
+               if row[0] == model[treeiter][0]:
+                   self.item_liststore.remove(row.iter)
+                   break
+
+    def on_add_button_clicked(self, widget):
+        """Called add button clicks"""
+        dialog = AddDialog(self)
+        response = dialog.run()
+
+        if response == Gtk.ResponseType.OK and (not dialog.source_str is None) and ( not dialog.name_str is None or dialog.name_str == ""):
+            self.core.insert(dialog.name_str, dialog.source_str)
+            item_id = self.core.find_id_by_name(dialog.name_str)
+            self.item_liststore.append(list([int(item_id), dialog.name_str, dialog.source_str, True]))
+
+        dialog.destroy()
 
 def load_gui(core):
     print_info("Loading gui");
