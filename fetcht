@@ -35,7 +35,7 @@ def main():
     print_info("{0} v{1} (hex0var) GPLv2\n".format(__program_name__, __version__));
 
     core = fetcht_core();
-    
+
     try:
         opts, args = getopt.getopt(sys.argv[1:], "hsgc", ["help","silent", "gui", "cmd"])
     except getopt.GetoptError as err:

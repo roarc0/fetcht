@@ -167,7 +167,7 @@ class fetcht_core:
         self.con.commit();
 
     def enable(self, item_id, action):
-        self.cur.execute("UPDATE keyword SET enabled='{0}' WHERE id={1}".format(action, str(item_id)));
+        self.cur.execute("UPDATE keyword SET enabled='{0}' WHERE id={1}".format(int(bool(action)), str(item_id)));
         self.con.commit();
 
     def filter(self, item_id, val, exclude):
@@ -181,8 +181,8 @@ class fetcht_core:
     def get_filters(self, item_id):
         return self.cur.execute("SELECT value,exclude FROM filter WHERE id={0}".format(str(item_id)))
 
-    def search(self, source, enabled):
-        return self.cur.execute("SELECT id,name FROM keyword WHERE enabled={1} AND source=\"{0}\" ORDER BY name".format(str(source), int(enabled)))
+    def search(self, source):
+        row = self.cur.execute("SELECT id,name,enabled FROM keyword WHERE source=\"{0}\" ORDER BY name".format(str(source)))
 
     def list(self, sstring=""):
         return self.cur.execute("SELECT id,name,source,enabled FROM keyword WHERE name LIKE '%{0}%' ORDER BY name".format(sstring))
@@ -190,19 +190,27 @@ class fetcht_core:
     def get_cursor(self):
         return self.cur
 
-    def process_torrent(self, item, url):
-        if self.check_memory(item):
-            if self.manual_add and (not ask("Do you want to load this torrent?")):
-                return
-            ret = False;
-            if url == "":
-                ret = load_magnet(item);
-            else:
-                ret = download_file(url, item + ".torrent")
+    def process_item(self, row, current_item, url):
+        if len(row) < 3 :
+            #print_err("malformed row: ", str(row))
+            return
+        check_id , check_item, enabled = row
 
-            if ret:
-                self.add_to_memory(item);
-      
+        if str(check_item).lower().replace("."," ") in str(current_item).lower().replace("."," "):
+            if not enabled:
+                print_warn("Downloadable but disabled:\n", current_item + "\n")
+            elif self.check_filter(check_id, current_item):
+                if self.check_memory(current_item):
+                    if self.manual_add and (not ask("Do you want to load this torrent?")):
+                        return
+                    ret = False;
+                    if url == "":
+                        ret = load_magnet(current_item);
+                    else:
+                        ret = download_file(url, current_item + ".torrent")
+                    if ret:
+                        self.add_to_memory(current_item);
+
     def process_command(self, cmd):
         c = cmd[0]
         try:
@@ -388,12 +396,10 @@ class fetcht_core:
                     except Exception as e:
                         print_err("process_command -> error :", str(e))
 
-                    for m in magnets:
-                        m = m.strip()
-                        for row_eztv in self.search("eztv", 1):
-                            if len(row_eztv) > 1 and row_eztv[1] in m:
-                                if self.check_filter(row_eztv[0], m):
-                                    self.process_torrent(m, "");
+                    for magnet in magnets:
+                        magnet = magnet.strip()
+                        for row in self.search("eztv"):
+                            self.process_item(row, magnet, "");
 
                 print_info("Checking nyaa source...");
                 nyaa_url = "http://www.nyaa.se/?page=search&cats=1_37&offset="
@@ -409,12 +415,11 @@ class fetcht_core:
                         for elem in soup.find_all("td", {"class", "tlistname"}):
                             link = elem.find("a");
                             name = link.get_text();
-                            download_url = str(link.get('href')).replace("page=view", "page=download").replace("//www", "http://www");
+                            url = str(link.get('href')).replace("page=view", "page=download").replace("//www", "http://www");
+                            #magnet = 
 
-                            for row_nyaa in self.search("nyaa", 1):
-                                if len(row_nyaa) > 1 and row_nyaa[1] in str(name):
-                                    if self.check_filter(row_nyaa[0], name):
-                                        self.process_torrent(name, download_url);
+                            for row in self.search("nyaa"):
+                                self.process_item(row, name, url);
                     except Exception as e:
                         print_err("process_command -> error: ", str(e));
                         pass
@@ -429,10 +434,8 @@ class fetcht_core:
                     for elem in soup.find_all("item"):
                         name = elem.find("title").get_text();
                         magnet = elem.find("link").get_text();
-                        for row_showrss in self.search("showrss", 1):
-                            if len(row_showrss) > 1 and row_showrss[1] in str(name):
-                                if self.check_filter(row_showrss[0], name):
-                                    self.process_torrent(magnet);
+                        for row in self.search("showrss"):
+                            self.process_item(row, name, "");
                 except Exception as e:
                     print_err("process_command -> error: ", str(e));
                     pass
