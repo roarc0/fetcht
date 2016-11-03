@@ -17,10 +17,17 @@ class fetcht_core:
         self.manual_add = False
 
         try:
+            base_path = os.path.dirname(self.db_path)
+            if not os.path.exists(base_path):
+                os.mkdir(base_path)
+
             self.con = sqlite3.connect(self.db_path);
             self.cur = self.con.cursor();
+            if not self.table_exists("keyword"):
+                print_info("Initializing new database")
+                self.init();
         except Exception as e:
-            print_err("fetcht_core -> error opening db: ", str(e));
+            print_err("init -> error opening db: ", str(e));
             self.status = False;
         self.status = True;
 
@@ -36,6 +43,14 @@ class fetcht_core:
             print_err("find_name_by_id -> error: ", str(e))
             pass
         return ""
+
+    def table_exists(self, name):
+        try:
+            self.cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='{0}'".format(name));
+            return bool(len(self.cur.fetchall()));
+        except sqlite3.Error as e:
+            print_err("find_name_by_id -> sqlite error: ", str(e));
+            return False
 
     def find_id_by_name(self, name):
         try:
@@ -126,27 +141,22 @@ class fetcht_core:
         print_info("bye bye!");
 
     def init(self):
-        self.cur.execute('''DELETE FROM sqlite_master
-                       WHERE type = 'table';''');
-        self.cur.execute('''CREATE TABLE keyword
-                       (id INTEGER,
-                        name TEXT,
-                        date TEXT,
-                        source TEXT,
-                        enabled BOOLEAN,
-                        PRIMARY KEY (id),
-                        UNIQUE (name))''');
-        self.cur.execute('''CREATE TABLE memory
-                       (id INTEGER,
-                        value TEXT,
-                        date  INTEGER,
-                        PRIMARY KEY (id,value))''');
-        self.cur.execute('''CREATE TABLE filter
-                       (id INTEGER,
-                        value TEXT,
-                        exclude BOOLEAN,
-                        PRIMARY KEY (id,value,exclude))''');
-        self.con.commit();
+        try:
+            self.cur.executescript('''PRAGMA writable_schema = 1;
+            delete from sqlite_master where type in ('table', 'index', 'trigger');
+            PRAGMA writable_schema = 0;
+            VACUUM;
+            PRAGMA INTEGRITY_CHECK;
+            CREATE TABLE keyword(id INTEGER, name TEXT, date TEXT, source TEXT,
+                                 enabled BOOLEAN, PRIMARY KEY (id), UNIQUE (name));
+            CREATE TABLE memory(id INTEGER, value TEXT, date  INTEGER,
+                                PRIMARY KEY (id,value));
+            CREATE TABLE filter(id INTEGER, value TEXT, exclude BOOLEAN,
+                                PRIMARY KEY (id,value,exclude));''');
+            self.con.commit();
+        except sqlite3.Error as e:
+            print_err("init -> sqlite error: ", str(e))
+            pass
 
     def query(self, qstring):
         self.cur.execute(str(qstring));
@@ -250,14 +260,14 @@ class fetcht_core:
             elif c == "dump":
                 print_warn("not yet implemented...")
 
-            elif c in ["insert", "ins","i"]: #TODO check valid source
+            elif c in ["insert", "ins", "i"]: #TODO check valid source
                 if len(cmd) == 3:
                     self.insert(cmd[1], cmd[2]);
                     print_info("Inserting \"{0}\" source: {1}. id: {2}".format(cmd[1],cmd[2], self.find_id_by_name(cmd[1])));
                 else:
-                    print("Wrong synthax. use \"insert <name> <source>\"\nname: name of the series. be careful to match the exact name in magnet or link name.\nsource: one of \{eztv,nyaa\}");
+                    print("Wrong synthax. use \"insert <name> <source>\"\nname: name of the series. be careful to match the exact name in magnet or link name.\nsource: one of {eztv,nyaa}");
 
-            elif c in ["update","up","u"]:
+            elif c in ["update", "up", "u"]:
                 if len(cmd) == 4:
                     [item_id, item_name] = self.get_item(cmd[1]);
                     self.update(item_id, cmd[2], cmd[3]);
