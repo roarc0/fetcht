@@ -182,7 +182,7 @@ class fetcht_core:
         return self.cur.execute("SELECT value,exclude FROM filter WHERE id={0}".format(str(item_id)))
 
     def search(self, source):
-        row = self.cur.execute("SELECT id,name,enabled FROM keyword WHERE source=\"{0}\" ORDER BY name".format(str(source)))
+        return self.cur.execute("SELECT id,name,enabled FROM keyword WHERE source=\"{0}\" ORDER BY name".format(str(source)))
 
     def list(self, sstring=""):
         return self.cur.execute("SELECT id,name,source,enabled FROM keyword WHERE name LIKE '%{0}%' ORDER BY name".format(sstring))
