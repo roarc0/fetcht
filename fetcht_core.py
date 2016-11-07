@@ -222,6 +222,7 @@ class fetcht_core:
                         self.add_to_memory(current_item);
 
     def process_command(self, cmd):
+        cmd = cmd.split(" ")
         c = cmd[0]
         try:
             if c in ["exit","quit","e","q"]:
@@ -450,7 +451,7 @@ class fetcht_core:
                     print_err("process_command -> error: ", str(e));
                     pass
 
-            else:
+            elif cmd != ['']:
                 print_err("process_command -> command not found!\n", "Please, type \"help\" for command list");
 
         except sqlite3.Error as e:

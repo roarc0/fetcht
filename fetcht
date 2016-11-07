@@ -9,18 +9,28 @@ from fetcht_gui import *
 __program_name__ = "fetcht"
 __version__ = '0.4'
 
-def load_cmd(core, cmd):
-    print_info("Loading command prompt");
-    prompt = True if cmd in ["",[]] else False
+import cmd
+commands = []
+class CmdParse(cmd.Cmd): #TODO port core itself to this cmd structure
+    prompt = "> "
+    def set_core(self, core):
+        self.core = core
+        return self
+    def onecmd(self, line):
+        if self.core is None:
+            return
+        self.core.process_command(line)
+        commands.append(line)
+        if self.core.status == False:
+            return True
 
-    while core.status:
-        if prompt:
-            raw = input("> ")
-            cmd = raw.split(" ")
-        else:
-            core.status = False
-
-        core.process_command(cmd)
+def load_cmd(core, line):
+    prompt = True if line in ["",[]] else False
+    if prompt:
+        CmdParse().set_core(core).cmdloop()
+    else:
+        core.process_command(line)
+        core.status = False
 
 def usage(): # prettytable
     print_info("""Usage:\n
