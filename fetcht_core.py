@@ -222,7 +222,8 @@ class fetcht_core:
                         self.add_to_memory(current_item);
 
     def process_command(self, cmd):
-        cmd = cmd.split(" ")
+        if type(cmd) is str:
+            cmd = cmd.split(" ")
         c = cmd[0]
         try:
             if c in ["exit","quit","e","q"]:
