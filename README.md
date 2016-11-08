@@ -1,4 +1,8 @@
 # fetcht
+
+[![Build Status](https://travis-ci.org/hexvar/fetcht.png?branch=master)](https://travis-ci.org/hexvar/fetcht)
+[![Coverage Status](https://coveralls.io/repos/hexvar/fetcht/badge.png)](https://coveralls.io/r/hexvar/fetcht)
+
 *** Fetch torrents from various sources.
 For now sources are hardcoded. you can download from nyaatorrents,eztv.
 
