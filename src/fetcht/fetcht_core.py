@@ -2,11 +2,11 @@ import os, re, sqlite3
 import urllib
 from urllib.request import Request, urlopen
 from bs4 import BeautifulSoup
-
 from prettytable import PrettyTable
-from prettyprint import *
-from fetcht_utils import *
-from fetcht_io import *
+
+from fetcht.prettyprint import *
+from fetcht.fetcht_utils import *
+from fetcht.fetcht_io import *
 
 class fetcht_core:
 

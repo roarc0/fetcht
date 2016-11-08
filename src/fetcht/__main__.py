@@ -2,9 +2,9 @@
 
 import sys, getopt
 
-from prettyprint import *
-from fetcht_core import *
-from fetcht_gui import *
+from fetcht.prettyprint import *
+from fetcht.fetcht_core import *
+from fetcht.fetcht_gui import *
 
 __program_name__ = "fetcht"
 __version__ = '0.4'

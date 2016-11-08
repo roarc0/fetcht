@@ -2,7 +2,8 @@ import sys, os, subprocess
 import urllib
 from urllib.request import Request, urlopen
 from time import sleep
-from prettyprint import *
+
+from fetcht.prettyprint import *
 
 dl_path = os.getenv("HOME")
 torrent_client = 'deluge'
