@@ -7,3 +7,5 @@ python:
   - "pypy"
 install:
   - "pip install ."
+script: nosetests
+sudo: false
