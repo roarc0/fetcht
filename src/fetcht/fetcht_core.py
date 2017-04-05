@@ -452,21 +452,39 @@ class fetcht_core:
                         print_err("process_command -> error: ", str(e));
                         pass
 
-                print_info("Checking showrss source..."); #WIP
-                showrss_url = "http://showrss.info/other/all.rss";
+                print_info("Checking piratebay source...");
+                for row in self.search("pirate"):
+                    s_id , s_item, s_enabled = row
+                    url = "https://pirateaccess.xyz/search.php?q={0}&page=0&orderby=99".format(s_item);
+                    try:
+                        req = Request(url, headers={'User-Agent': 'Mozilla/5.0'});
+                        data = urlopen(req, None, self.request_timeout).read();
 
-                try:
-                    req = Request(showrss_url, headers={'User-Agent': 'Mozilla/5.0'});
-                    data = urlopen(req, None, self.request_timeout).read();
-                    soup = BeautifulSoup(data, "xml");
-                    for elem in soup.find_all("item"):
-                        name = elem.find("title").get_text();
-                        magnet = elem.find("link").get_text();
-                        for row in self.search("showrss"):
-                            self.process_item(row, name, "");
-                except Exception as e:
-                    print_err("process_command -> error: ", str(e));
-                    pass
+                        regexp = re.compile("<a href=\"(magnet.+?)\"");
+                        magnets = regexp.findall(str(data));
+
+                        for magnet in magnets:
+                            magnet = magnet.strip()
+                            self.process_item(row, magnet, "");
+                    except Exception as e:
+                        print_err("process_command -> error: ", str(e));
+                        pass
+
+                #print_info("Checking showrss source..."); #WIP
+                #showrss_url = "http://showrss.info/other/all.rss";
+
+                #try:
+                #    req = Request(showrss_url, headers={'User-Agent': 'Mozilla/5.0'});
+                #    data = urlopen(req, None, self.request_timeout).read();
+                #    soup = BeautifulSoup(data, "xml");
+                #    for elem in soup.find_all("item"):
+                #        name = elem.find("title").get_text();
+                #        magnet = elem.find("link").get_text();
+                #        for row in self.search("showrss"):
+                #            self.process_item(row, name, "");
+                #except Exception as e:
+                #    print_err("process_command -> error: ", str(e));
+                #    pass
 
             elif cmd != ['']:
                 print_err("process_command -> command not found!\n", "Please, type \"help\" for command list");
