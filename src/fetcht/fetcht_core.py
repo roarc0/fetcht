@@ -184,6 +184,10 @@ class fetcht_core:
         self.cur.execute("INSERT INTO filter VALUES ('{0}', '{1}' , {2})".format(str(item_id), str(val), str(int(exclude))));
         self.con.commit();
 
+    def set_source(self, item_id, val):
+        self.cur.execute("UPDATE keyword SET source='{1}' WHERE id={0}".format(str(item_id), str(val)));
+        self.con.commit();
+
     def delete_filter(self, item_id, val):
         self.cur.execute("DELETE FROM filter WHERE id={0} AND value=\"{1}\"".format(str(item_id), str(val)));
         self.con.commit();
@@ -250,6 +254,7 @@ class fetcht_core:
                 x.add_row(["filter del","<id/name>","Delete a filter for item"]);
                 x.add_row(["exclude","<id/name> <filter_val>","Filters out item containing filter_val."]);
                 x.add_row(["include","<id/name> <filter_val>","Requires out item containing filter_val."]);
+                x.add_row(["source","<id/name> <source>","Changes source for item"]);
                 x.add_row(["prompt","<id/name> <filter_val>","[TODO] Asks to continue if contains filter_val."]);
                 x.add_row(["fetch","<pages>","Fetch torrents"]);
                 x.add_row(["list","","List currently watched items"]);
@@ -289,6 +294,17 @@ class fetcht_core:
                         print_err("Can't find \"{0}\" in database.".format(cmd[1]));
                 else:
                     print_err("Wrong synthax. use \"filter <id/name> <val> <0/1>\"");
+
+            elif c in ["source"]:
+                if len(cmd) == 3:
+                    [item_id, item_name] = self.get_item(cmd[1]);
+                    if int(item_id) >= 0:
+                        self.set_source(item_id, cmd[2]);
+                        print_info("New source for \"{0}\" id:{1} source: \"{2}\"".format(item_name, item_id, cmd[2]));
+                    else:
+                        print_err("Can't find \"{0}\" in database.".format(cmd[1]));
+                else:
+                    print_err("Wrong synthax. use \"source <id/name> <source>\"");
 
             elif c == "filter": #TODO table
                 if len(cmd) >= 3:
