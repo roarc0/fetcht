@@ -7,7 +7,7 @@ setup(name='Fetcht',
       description='Fetch torrents from various sources',
       author='Alessandro Rosetti',
       author_email='alessandro.rosetti@gmail.com',
-      url='http://www.github.com/hexvar/fetcht',
+      url='http://www.github.com/hexec/fetcht',
       packages=['fetcht'],
       package_dir={'fetcht': 'src/fetcht'}
      )
