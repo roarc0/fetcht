@@ -72,7 +72,7 @@ class FetchtWindow(Gtk.Window):
 			self.treeview.append_column(column)
 
 		self.buttons = list()
-		for name in ["all", "eztv", "nyaa", "showrss"]:
+		for name in ["all", "eztv", "nyaa", "pirate"]:
 			button = Gtk.Button(name)
 			self.buttons.append(button)
 			button.connect("clicked", self.on_selection_button_clicked)

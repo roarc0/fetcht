@@ -42,7 +42,7 @@ def usage(): # prettytable
 	""")
 
 def main():
-	print_info("{0} v{1} (hex0var) GPLv2\n".format(__program_name__, __version__));
+	print_info("{0} v{1} (hexec) GPLv2\n".format(__program_name__, __version__));
 
 	core = fetcht_core();
 

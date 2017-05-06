@@ -11,7 +11,7 @@ from fetcht.fetcht_io import *
 class fetcht_core:
 
 	def __init__(self):
-		self.db_path = os.getenv("HOME") + '/.local/db/fetcht.db'
+		self.db_path = os.getenv("HOME") + '/.local/hexfiles/env/db/fetcht.db'
 		self.check_pages_num = 5
 		self.request_timeout = 30
 		self.manual_add = False
@@ -204,9 +204,9 @@ class fetcht_core:
 	def get_cursor(self):
 		return self.cur
 
-	def process_item(self, row, current_item, url):
+	def process_item(self, row, current_item, link):
 		if len(row) < 3 :
-			#print_err("malformed row: ", str(row))
+			#print_err("Malformed row: ", str(row))
 			return
 		check_id , check_item, enabled = row
 
@@ -218,12 +218,12 @@ class fetcht_core:
 					if self.manual_add and (not ask("Do you want to load this torrent?")):
 						return
 					ret = False;
-					if url == "":
-						ret = load_magnet(current_item);
+					if link.startswith("magnet"):
+						ret = load_magnet(link);
 					else:
-						ret = download_file(url, current_item + ".torrent")
+						ret = download_file(link, current_item + ".torrent")
 					if ret:
-						self.add_to_memory(current_item);
+						self.add_to_memory(link);
 
 	def process_command(self, cmd):
 		if type(cmd) is str:
@@ -272,7 +272,7 @@ class fetcht_core:
 					self.insert(cmd[1], cmd[2]);
 					print_info("Inserting \"{0}\" source: {1}. id: {2}".format(cmd[1],cmd[2], self.find_id_by_name(cmd[1])));
 				else:
-					print("Wrong synthax. use \"insert <name> <source>\"\nname: name of the series. be careful to match the exact name in magnet or link name.\nsource: one of {eztv,nyaa}");
+					print("Wrong synthax. use \"insert <name> <source>\"\nname: name of the series. be careful to match the exact name in magnet or link name.\nsource: one of {eztv,horrible,nyaa,pirate}");
 
 			elif c in ["update", "up", "u"]:
 				if len(cmd) == 4:
@@ -412,7 +412,7 @@ class fetcht_core:
 				for i in range(0, self.check_pages_num):
 					print_info("page #{0}\n".format(i));
 
-					url = "http://eztv.it/"; #'https://eztv.ch/', 'https://eztv-proxy.net/'
+					url = "http://eztv-proxy.net/"; #'https://eztv.ag/'
 					if i > 0:
 						url = "{0}page_{1}".format(url,i);
 
@@ -421,35 +421,34 @@ class fetcht_core:
 						data = urlopen(req, None, self.request_timeout).read();
 						regexp = re.compile("<a href=\"(magnet.+?)\"");
 						magnets = regexp.findall(str(data));
+
+						for magnet in magnets:
+							magnet = magnet.strip()
+							for row in self.search("eztv"):
+								self.process_item(row, magnet, magnet);
 					except Exception as e:
-						print_err("process_command_eztv -> error :", str(e))
+						print_err("process_command_eztv -> error : ", str(e))
 
-					for magnet in magnets:
-						magnet = magnet.strip()
-						for row in self.search("eztv"):
-							self.process_item(row, magnet, "");
+				print_info("Checking horrible source...");
+				url = "http://horriblesubs.info/rss.php?res=720"
 
-				print_info("Checking nyaa source...");
-				url = "http://www.nyaa.se/?page=search&cats=1_37&offset="
-				for page in range(1, self.check_pages_num + 1):
-					print_info("page #" + str(page-1) + "\n");
+				try:
+					req = Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+					data = urlopen(req, None, self.request_timeout).read()
+					soup = BeautifulSoup(data, "xml")
 
-					try:
-						req = Request(url + str(page), headers={'User-Agent': 'Mozilla/5.0'})
-						data = urlopen(req, None, self.request_timeout).read()
-						soup = BeautifulSoup(data, "lxml")
-						soup = soup.find("table", {"class": "tlist"})
+					for elem in soup.find_all("item"):
+						name = elem.find("title").get_text();
+						magnet = elem.find("link").get_text();
 
-						for elem in soup.find_all("td", {"class", "tlistname"}):
-							link = elem.find("a");
-							name = link.get_text();
-							download_url = str(link.get('href')).replace("page=view", "page=download").replace("//www", "http://www");
+						for row in self.search("horrible"):
+							self.process_item(row, name, magnet);
 
-							for row in self.search("nyaa"):
-								self.process_item(row, name, download_url);
-					except Exception as e:
-						print_err("process_command_nyaa -> error: ", str(e));
-						pass
+						for row in self.search("nyaa"):
+							self.process_item(row, name, magnet);
+				except Exception as e:
+					print_err("process_command_horrible -> error: ", str(e));
+					pass
 
 				print_info("Checking piratebay source...");
 				for row in self.search("pirate"):
@@ -464,26 +463,10 @@ class fetcht_core:
 
 						for magnet in magnets:
 							magnet = magnet.strip()
-							self.process_item(row, magnet, "");
+							self.process_item(row, magnet, magnet);
 					except Exception as e:
 						print_err("process_command_pirate -> error: ", str(e));
 						pass
-
-				#print_info("Checking showrss source..."); #WIP
-				#url = "http://showrss.info/other/all.rss";
-
-				#try:
-				#	req = Request(url, headers={'User-Agent': 'Mozilla/5.0'});
-				#	data = urlopen(req, None, self.request_timeout).read();
-				#	soup = BeautifulSoup(data, "xml");
-				#	for elem in soup.find_all("item"):
-				#		name = elem.find("title").get_text();
-				#		magnet = elem.find("link").get_text();
-				#		for row in self.search("showrss"):
-				#			self.process_item(row, name, "");
-				#except Exception as e:
-				#	print_err("process_command -> error: ", str(e));
-				#	pass
 
 			elif cmd != ['']:
 				print_err("process_command -> command not found!\n", "Please, type \"help\" for command list");
