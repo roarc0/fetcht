@@ -223,7 +223,7 @@ class fetcht_core:
 					else:
 						ret = download_file(link, current_item + ".torrent")
 					if ret:
-						self.add_to_memory(link);
+						self.add_to_memory(current_item);
 
 	def process_command(self, cmd):
 		if type(cmd) is str:
