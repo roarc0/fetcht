@@ -86,15 +86,16 @@ class fetcht_core:
 		return item_id, item_name
 
 	def check_filter(self, id, item):
+		name = magnet_name(item);
 		try:
 			for row_include in self.cur.execute("SELECT value FROM filter WHERE id={0} AND exclude=0".format(str(id))):
 				if row_include[0] not in item:
-					print_warn("Filtering out, include reason \"{0}\" not found :\n".format(row_include[0]), str(item) + "\n");
+					print_warn("Filtering out, include reason \"{0}\" not found :\n".format(row_include[0]), str(name) + "\n");
 					return False
 
 			for row_exclude in self.cur.execute("SELECT value FROM filter WHERE id={0} AND exclude=1".format(str(id))):
 				if row_exclude[0] in item:
-					print_warn("Filtering out, exclude reason \"{0}\" found :\n".format(row_exclude[0]), str(item) + "\n");
+					print_warn("Filtering out, exclude reason \"{0}\" found :\n".format(row_exclude[0]), str(name) + "\n");
 					return False
 		except sqlite3.Error as e:
 			print_err("check_filter -> sqlite error: ", str(e))
@@ -107,14 +108,15 @@ class fetcht_core:
 
 	def check_memory(self, item):
 		count=0;
+		name = magnet_name(item);
 		try:
 			for row_memory in self.cur.execute("SELECT * FROM memory WHERE value = '{0}'".format(str(item))):
 				count+=1;
 			if count == 0:
-				print_info("New torrent found:\n", "{0}\n".format(str(item)));
+				print_info("New torrent found:\n", "{0}\n".format(name));
 				return True
 			else:
-				print_warn("Torrent already downloaded:\n", "{0}\n".format(str(item)));
+				print_warn("Torrent already downloaded:\n", "{0}\n".format(name));
 				return False
 		except sqlite3.Error as e:
 			print_err("check_memory -> sqlite error: ", str(e))
@@ -212,7 +214,7 @@ class fetcht_core:
 
 		if str(check_item).lower().replace("."," ") in str(current_item).lower().replace("."," "):
 			if not enabled:
-				print_warn("Downloadable but disabled:\n", current_item + "\n")
+				print_warn("Downloadable but disabled:\n", magnet_name(current_item) + "\n")
 			elif self.check_filter(check_id, current_item):
 				if self.check_memory(current_item):
 					if self.manual_add and (not ask("Do you want to load this torrent?")):

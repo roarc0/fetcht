@@ -4,6 +4,7 @@ from urllib.request import Request, urlopen
 from time import sleep
 
 from fetcht.prettyprint import *
+from fetcht.fetcht_utils import *
 
 dl_path = os.getenv("HOME")
 torrent_client = 'deluge'
@@ -66,6 +67,12 @@ def execute(command):
 def load_magnet(magnet):
 	execute("({0} \"{1}\") > /dev/null".format(torrent_client, magnet));
 	return True
+
+def magnet_name(magnet):
+	if not magnet.startswith('magnet'):
+		return magnet
+	else:
+		return urllib.parse.unquote(find_between(magnet, "&dn=", "&"))
 
 def download_file(url, filename):
 	try:
