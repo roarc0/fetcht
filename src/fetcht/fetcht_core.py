@@ -11,7 +11,7 @@ from fetcht.fetcht_io import *
 class fetcht_core:
 
 	def __init__(self):
-		self.db_path = os.getenv("HOME") + '/.local/hexfiles/env/db/fetcht.db'
+		self.db_path = os.getenv("HOME") + '/.local/hexfiles/db/fetcht.db'
 		self.check_pages_num = 5
 		self.request_timeout = 30
 		self.manual_add = False
@@ -455,7 +455,7 @@ class fetcht_core:
 				print_info("Checking piratebay source...");
 				for row in self.search("pirate"):
 					s_id , s_item, s_enabled = row
-					url = "https://pirateaccess.xyz/?load=/search/{0}/0/3/0".format(s_item);
+					url = "https://pirateproxy.cc/search/{0}/0/3/0".format(s_item);
 					try:
 						req = Request(url, headers={'User-Agent': 'Mozilla/5.0'});
 						data = urlopen(req, None, self.request_timeout).read();
