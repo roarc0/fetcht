@@ -1,27 +1,35 @@
 import os, re, sqlite3
-import urllib
+
 from urllib.request import Request, urlopen
-from bs4 import BeautifulSoup
 from prettytable import PrettyTable
+from bs4 import BeautifulSoup
 
 from fetcht.prettyprint import *
 from fetcht.fetcht_utils import *
 from fetcht.fetcht_io import *
+from fetcht.fetcht_conf import *
 
 class fetcht_core:
 
 	def __init__(self):
-		self.db_path = os.getenv("HOME") + '/.local/hexfiles/db/fetcht.db'
+		self.cfg_path = os.environ['HOME'] + '/.config/fetcht/'
+		self.cfg_file = self.cfg_path + '/fetcht.conf'
+		self.db_file = self.cfg_path + '/fetcht.db'
 		self.check_pages_num = 5
 		self.request_timeout = 30
 		self.manual_add = False
 
+		load_config(self)
+		self.load_db()
+		self.status = True;
+
+	def load_db(self):
 		try:
-			base_path = os.path.dirname(self.db_path)
+			base_path = os.path.dirname(self.db_file)
 			if not os.path.exists(base_path):
 				os.mkdir(base_path)
 
-			self.con = sqlite3.connect(self.db_path);
+			self.con = sqlite3.connect(self.db_file);
 			self.cur = self.con.cursor();
 			if not self.table_exists("keyword"):
 				print_info("Initializing new database")
@@ -29,7 +37,6 @@ class fetcht_core:
 		except Exception as e:
 			print_err("init -> error opening db: ", str(e));
 			self.status = False;
-		self.status = True;
 
 	def find_name_by_id(self, id):
 		try:
@@ -221,7 +228,7 @@ class fetcht_core:
 						return
 					ret = False;
 					if link.startswith("magnet"):
-						ret = load_magnet(link);
+						ret = load_magnet(self, link);
 					else:
 						ret = download_file(link, current_item + ".torrent")
 					if ret:
@@ -403,7 +410,7 @@ class fetcht_core:
 				print_info("Memory table cleared");
 
 			elif c in ["fetch", "f"]:
-				check_process(torrent_client);
+				check_process(get_conf(self, 'torrentcmd'));
 				if len(cmd) > 1 and cmd[1] == "manual":
 					self.manual_add = True;
 				if len(cmd) > 1 and cmd[1].isdigit():

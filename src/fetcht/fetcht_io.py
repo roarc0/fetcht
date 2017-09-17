@@ -3,11 +3,11 @@ import urllib
 from urllib.request import Request, urlopen
 from time import sleep
 
-from fetcht.prettyprint import *
 from fetcht.fetcht_utils import *
+from fetcht.fetcht_conf import *
+from fetcht.prettyprint import *
 
 dl_path = os.getenv("HOME")
-torrent_client = 'deluge'
 
 def daemonize(name):
 	"""UNIX double fork mechanism."""
@@ -64,8 +64,8 @@ def execute(command):
 	output, errors = p.communicate();
 	return str(output.decode("ascii"));
 
-def load_magnet(magnet):
-	execute("({0} \"{1}\") > /dev/null".format(torrent_client, magnet));
+def load_magnet(self, magnet):
+	execute("({0} \"{1}\") > /dev/null".format(self.get_conf('torrentcmd'), magnet));
 	return True
 
 def magnet_name(magnet):
