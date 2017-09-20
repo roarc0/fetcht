@@ -22,7 +22,7 @@ class fetcht_core:
 		self.load_db()
 		self.cfg = jconfig(self.cfg_file)
 		if not os.path.exists(self.cfg_file):
-			self.cfg.cfg = {'torrentcmd': 'deluge'}
+			self.cfg.cfg = {'torrentcmd': 'deluge', 'checkprocess':'1'}
 			self.cfg.save()
 
 		self.status = True;
@@ -414,7 +414,8 @@ class fetcht_core:
 				print_info("Memory table cleared");
 
 			elif c in ["fetch", "f"]:
-				check_process(self.cfg.get('torrentcmd'));
+				if self.cfg.get('checkprocess') == '1':
+					check_process(self.cfg.get('torrentcmd'));
 				if len(cmd) > 1 and cmd[1] == "manual":
 					self.manual_add = True;
 				if len(cmd) > 1 and cmd[1].isdigit():

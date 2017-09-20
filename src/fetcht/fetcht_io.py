@@ -53,7 +53,7 @@ def check_process(name):
 		check_process(name);
 	else:
 		print_info("Process {0} is running!".format(name));
-	
+
 def load_process(name):
 	print_err("Process not running, loading {0}!".format(name))
 	daemonize(name)
