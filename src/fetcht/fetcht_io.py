@@ -4,8 +4,8 @@ from urllib.request import Request, urlopen
 from time import sleep
 
 from fetcht.fetcht_utils import *
-from fetcht.fetcht_conf import *
 from fetcht.prettyprint import *
+from fetcht.jconfig import *
 
 dl_path = os.getenv("HOME")
 
@@ -65,7 +65,7 @@ def execute(command):
 	return str(output.decode("ascii"));
 
 def load_magnet(self, magnet):
-	execute("({0} \"{1}\") > /dev/null".format(self.get_conf('torrentcmd'), magnet));
+	execute("({0} \"{1}\") > /dev/null".format(self.cfg.get('torrentcmd'), magnet));
 	return True
 
 def magnet_name(magnet):

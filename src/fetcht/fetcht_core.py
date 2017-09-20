@@ -7,20 +7,24 @@ from bs4 import BeautifulSoup
 from fetcht.prettyprint import *
 from fetcht.fetcht_utils import *
 from fetcht.fetcht_io import *
-from fetcht.fetcht_conf import *
+from fetcht.jconfig import *
 
 class fetcht_core:
 
 	def __init__(self):
 		self.cfg_path = os.environ['HOME'] + '/.config/fetcht/'
-		self.cfg_file = self.cfg_path + '/fetcht.conf'
+		self.cfg_file = self.cfg_path + '/fetcht.json'
 		self.db_file = self.cfg_path + '/fetcht.db'
 		self.check_pages_num = 5
 		self.request_timeout = 30
 		self.manual_add = False
 
-		load_config(self)
 		self.load_db()
+		self.cfg = jconfig(self.cfg_file)
+		if not os.path.exists(self.cfg_file):
+			self.cfg.cfg = {'torrentcmd': 'deluge'}
+			self.cfg.save()
+
 		self.status = True;
 
 	def load_db(self):
@@ -410,7 +414,7 @@ class fetcht_core:
 				print_info("Memory table cleared");
 
 			elif c in ["fetch", "f"]:
-				check_process(get_conf(self, 'torrentcmd'));
+				check_process(self.cfg.get('torrentcmd'));
 				if len(cmd) > 1 and cmd[1] == "manual":
 					self.manual_add = True;
 				if len(cmd) > 1 and cmd[1].isdigit():
