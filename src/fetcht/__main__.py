@@ -7,7 +7,7 @@ from fetcht.fetcht_core import *
 from fetcht.fetcht_gui import *
 
 __program_name__ = "fetcht"
-__version__ = '0.4'
+__version__ = '0.6'
 
 import cmd
 commands = []
@@ -42,9 +42,9 @@ def usage(): # prettytable
 	""")
 
 def main():
-	print_info("{0} v{1} (hexec) GPLv2\n".format(__program_name__, __version__));
+	print_info("{0} v{1} (hexec) GPLv2\n".format(__program_name__, __version__))
 
-	core = fetcht_core();
+	core = fetcht_core()
 
 	try:
 		opts, args = getopt.getopt(sys.argv[1:], "hsgc", ["help","silent", "gui", "cmd"])
@@ -68,7 +68,7 @@ def main():
 	if not parsed:
 		load_cmd(core, sys.argv[1:])
 
-	core.close();
+	core.close()
 
 if __name__ == '__main__':
 	main();

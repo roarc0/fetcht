@@ -49,10 +49,10 @@ def check_process(name):
 	ps.stdout.close()
 	ps.wait()
 	if  output != b'1\n':
-		load_process(name);
-		check_process(name);
+		load_process(name)
+		check_process(name)
 	else:
-		print_info("Process {0} is running!".format(name));
+		print_info("Process {0} is running!".format(name))
 
 def load_process(name):
 	print_err("Process not running, loading {0}!".format(name))
@@ -60,13 +60,21 @@ def load_process(name):
 	sleep(1)
 
 def execute(command):
-	p = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE);
-	output, errors = p.communicate();
-	return str(output.decode("ascii"));
+	p = subprocess.Popen(command,
+						shell=True,
+						stdout=subprocess.PIPE,
+						stderr=subprocess.PIPE)
+	output, errors = p.communicate()
+	return p.returncode
 
-def load_magnet(self, magnet):
-	execute("({0} \"{1}\") > /dev/null".format(self.cfg.get('torrentcmd'), magnet));
-	return True
+def load_torrent(torrentcmd, link, item):
+	if link.startswith("magnet"):
+		return load_magnet(torrentcmd, link)
+	else:
+		return download_file(link, item + ".torrent")
+
+def load_magnet(torrentcmd, magnet):
+	return execute("({0} \"{1}\") > /dev/null".format(torrentcmd, magnet))
 
 def magnet_name(magnet):
 	if not magnet.startswith('magnet'):
@@ -74,14 +82,15 @@ def magnet_name(magnet):
 	else:
 		return urllib.parse.unquote(find_between(magnet, "&dn=", "&"))
 
+# TODO dowload dir variable
 def download_file(url, filename):
 	try:
 		with urllib.request.urlopen(url) as response, open(os.getenv("HOME") + '/' + filename, 'wb') as outf:
-			outf.write(response.read());
-			outf.close();
+			outf.write(response.read())
+			outf.close()
 	except Exception as e:
-		print_err("download_file -> error downloading file: ", str(e));
-		pass;
+		print_err("download_file -> error downloading file: ", str(e))
+		pass
 		return False
 
 	return True
