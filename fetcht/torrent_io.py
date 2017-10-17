@@ -9,29 +9,22 @@ from fetcht.jconfig import *
 dl_path = os.getenv("HOME")
 
 def check_process(name):
-	ps= subprocess.Popen("ps -A | awk '/" + name + "/{print \"1\";exit}'",
-						  shell=True, stdout=subprocess.PIPE)
+	ps = subprocess.Popen("ps -ax | awk '/" + name + "/{print \"1\";exit}'",
+						  shell=True,
+						  stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 	output = ps.stdout.read()
 	ps.stdout.close()
 	ps.wait()
 	if  output != b'1\n':
-		load_process(name)
-		check_process(name)
-	else:
-		INFO("Process {0} is running!".format(name))
-
-def load_process(name):
-	ERROR("Process not running, loading {0}!".format(name))
-	daemonize(name)
-	sleep(1)
+		ERROR("Process not running, loading {0}!".format(name))
+		daemonize(name)
+		sleep(1)
 
 def execute(command):
-	p = subprocess.Popen(command,
-						shell=True,
-						stdout=subprocess.PIPE,
-						stderr=subprocess.PIPE)
-	output, errors = p.communicate()
-	return p.returncode
+	ps = subprocess.Popen(command, shell=True,
+						stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+	output, errors = ps.communicate()
+	return ps.returncode
 
 def load_torrent(torrentcmd, link, item):
 	if link.startswith("magnet"):

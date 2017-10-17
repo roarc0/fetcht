@@ -1,8 +1,6 @@
-import os, re, sqlite3
+import os, sqlite3
 
-from urllib.request import Request, urlopen
 from prettytable import PrettyTable
-from bs4 import BeautifulSoup
 
 from fetcht.utils import *
 from fetcht.torrent_io import *
@@ -43,7 +41,7 @@ class core:
 		try:
 			self.cfg = jconfig(self.cfg_file)
 			if not os.path.exists(self.cfg_file):
-				self.cfg.cfg = {'torrent_cmd': '', 'check_process':'0'}
+				self.cfg.cfg = {'torrent_cmd': '', 'check_process':''}
 				self.cfg.save()
 		except Exception as e:
 			ERROR("load_conf -> error opening config: ", str(e))
@@ -53,10 +51,6 @@ class core:
 		if self.torrent_cmd is None:
 			self.torrent_cmd = ""
 
-		self.check_process = self.cfg.get('check_process')
-		if self.check_process is None:
-			self.check_process = False
-
 		self.default_npages = self.cfg.get('default_npages')
 		if self.default_npages is None:
 			self.default_npages = 5
@@ -65,9 +59,10 @@ class core:
 		if self.request_timeout is None:
 			self.request_timeout = 8
 
-		self.manual_add = self.cfg.get('manual_add')
-		if self.manual_add is None:
-			self.manual_add = False
+		self.check_process = self.cfg.get('check_process')
+
+		self.manual_add = self.cfg.get('manual_add') == "1"
+
 
 	def find_name_by_id(self, id):
 		try:
@@ -445,73 +440,14 @@ class core:
 				INFO("Memory table cleared")
 
 			elif c in ["fetch", "f"]:
-				if self.check_process == '1':
-					check_process(self.torrent_cmd)
-				if len(cmd) > 1 and cmd[1] == "manual":
-					self.manual_add = True
+				if self.check_process != '' or self.check_process != None:
+					check_process(self.check_process)
 				if len(cmd) > 1 and cmd[1].isdigit():
 					INFO("Setting check pages number to {0}".format(cmd[1]))
 					self.default_npages = int(cmd[1])
 
-				INFO("Checking eztv source...")
-				for i in range(0, self.default_npages):
-					INFO("page #{0}\n".format(i))
-
-					url = "http://eztv-proxy.net/"; #'https://eztv.ag/'
-					if i > 0:
-						url = "{0}page_{1}".format(url,i)
-
-					try:
-						req = Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-						data = urlopen(req, None, self.request_timeout).read()
-						regexp = re.compile("<a href=\"(magnet.+?)\"")
-						magnets = regexp.findall(str(data))
-
-						for magnet in magnets:
-							magnet = magnet.strip()
-							for row in self.search("eztv"):
-								self.process_item(row, magnet, magnet)
-					except Exception as e:
-						ERROR("process_command_eztv -> error : ", str(e))
-
-				INFO("Checking horrible source...")
-				url = "http://horriblesubs.info/rss.php?res=720"
-
-				try:
-					req = Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-					data = urlopen(req, None, self.request_timeout).read()
-					soup = BeautifulSoup(data, "xml")
-
-					for elem in soup.find_all("item"):
-						name = elem.find("title").get_text()
-						magnet = elem.find("link").get_text()
-
-						for row in self.search("horrible"):
-							self.process_item(row, name, magnet)
-
-						for row in self.search("nyaa"):
-							self.process_item(row, name, magnet)
-				except Exception as e:
-					ERROR("process_command_horrible -> error: ", str(e))
-					pass
-
-				INFO("Checking piratebay source...")
-				for row in self.search("pirate"):
-					s_id , s_item, s_enabled = row
-					url = "https://pirateproxy.cc/search/{0}/0/3/0".format(s_item)
-					try:
-						req = Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-						data = urlopen(req, None, self.request_timeout).read()
-
-						regexp = re.compile("<a href=\"(magnet.+?)\"")
-						magnets = regexp.findall(str(data))
-
-						for magnet in magnets:
-							magnet = magnet.strip()
-							self.process_item(row, magnet, magnet)
-					except Exception as e:
-						ERROR("process_command_pirate -> error: ", str(e))
-						pass
+				import fetcht.modules
+				fetcht.modules.load(self)
 
 			elif cmd != ['']:
 				ERROR("process_command -> command not found!\n", "Please, type \"help\" for command list")
