@@ -4,54 +4,70 @@ from urllib.request import Request, urlopen
 from prettytable import PrettyTable
 from bs4 import BeautifulSoup
 
-from fetcht.prettyprint import *
-from fetcht.fetcht_utils import *
-from fetcht.fetcht_io import *
+from fetcht.utils import *
+from fetcht.torrent_io import *
 from fetcht.jconfig import *
 
-class fetcht_core:
+class core:
 
 	def __init__(self):
-		self.cfg_path = os.environ['HOME'] + '/.config/fetcht/'
-		self.cfg_file = self.cfg_path + '/fetcht.json'
-		self.db_file = self.cfg_path + '/fetcht.db'
-		self.check_pages_num = 5
-		self.request_timeout = 10
-		self.manual_add = False
+		self.base_path = os.environ['HOME'] + '/.config/fetcht/'
+		self.cfg_file = self.base_path + 'fetcht.json'
+		self.db_file = self.base_path + 'fetcht.db'
+		self.log = logging.getLogger('core')
 		self.status = True
 
 		try:
-			base_path = os.path.dirname(self.db_file)
-			if not os.path.exists(base_path):
-				os.mkdir(base_path)
+			if not os.path.exists(self.base_path):
+				os.mkdir(self.base_path)
 		except Exception as e:
-			print_err("init -> error creating config path: ", str(e))
+			ERROR("init -> error creating config path: ", str(e))
 			self.status = False
 			return
 
-		self.load_db()
 		self.load_conf()
+		self.load_db()
 
 	def load_db(self):
 		try:
 			self.con = sqlite3.connect(self.db_file)
 			self.cur = self.con.cursor()
 			if not self.table_exists("keyword"):
-				print_info("Initializing new database")
+				INFO("Initializing new database")
 				self.init()
 		except Exception as e:
-			print_err("load_db -> error opening db: ", str(e))
+			ERROR("load_db -> error opening db: ", str(e))
 			self.status = False
 
 	def load_conf(self):
 		try:
 			self.cfg = jconfig(self.cfg_file)
 			if not os.path.exists(self.cfg_file):
-				self.cfg.cfg = {'torrentcmd': 'deluge', 'checkprocess':'1'}
+				self.cfg.cfg = {'torrent_cmd': '', 'check_process':'0'}
 				self.cfg.save()
 		except Exception as e:
-			print_err("load_conf -> error opening config: ", str(e))
+			ERROR("load_conf -> error opening config: ", str(e))
 			self.status = False
+
+		self.torrent_cmd = self.cfg.get('torrent_cmd')
+		if self.torrent_cmd is None:
+			self.torrent_cmd = ""
+
+		self.check_process = self.cfg.get('check_process')
+		if self.check_process is None:
+			self.check_process = False
+
+		self.default_npages = self.cfg.get('default_npages')
+		if self.default_npages is None:
+			self.default_npages = 5
+
+		self.request_timeout = self.cfg.get('request_timeout')
+		if self.request_timeout is None:
+			self.request_timeout = 8
+
+		self.manual_add = self.cfg.get('manual_add')
+		if self.manual_add is None:
+			self.manual_add = False
 
 	def find_name_by_id(self, id):
 		try:
@@ -59,10 +75,10 @@ class fetcht_core:
 			res = self.cur.fetchone()
 			return res[0]
 		except sqlite3.Error as e:
-			print_err("find_name_by_id -> sqlite error: ", str(e))
+			ERROR("find_name_by_id -> sqlite error: ", str(e))
 			pass
 		except Exception as e:
-			print_err("find_name_by_id -> error: ", str(e))
+			ERROR("find_name_by_id -> error: ", str(e))
 			pass
 		return ""
 
@@ -71,7 +87,7 @@ class fetcht_core:
 			self.cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='{0}'".format(name))
 			return bool(len(self.cur.fetchall()))
 		except sqlite3.Error as e:
-			print_err("find_name_by_id -> sqlite error: ", str(e))
+			ERROR("find_name_by_id -> sqlite error: ", str(e))
 			return False
 
 	def find_id_by_name(self, name):
@@ -80,10 +96,10 @@ class fetcht_core:
 			res = self.cur.fetchone()
 			return res[0]
 		except sqlite3.Error as e:
-			print_err("find_name_by_id -> sqlite error: ", str(e))
+			ERROR("find_name_by_id -> sqlite error: ", str(e))
 			pass
 		except Exception as e:
-			print_err("find_name_by_id -> error: ", str(e))
+			ERROR("find_name_by_id -> error: ", str(e))
 			pass
 		return -1
 
@@ -95,62 +111,62 @@ class fetcht_core:
 				item_id = self.find_id_by_name(value)
 				item_name = self.find_name_by_id(item_id)
 				if int(item_id) >=0:
-					print_warn("Recognized item \"{0}\" with id={1}".format(item_name, str(item_id)))
+					WARN("Recognized item \"{0}\" with id={1}".format(item_name, str(item_id)))
 			else:
 				item_id = value
 				item_name = self.find_name_by_id(item_id)
 		except sqlite3.Error as e:
-			print_err("get_item -> sqlite error: ", str(e))
+			ERROR("get_item -> sqlite error: ", str(e))
 			pass
 		except Exception as e:
-			print_err("get_item -> error: ", str(e))
+			ERROR("get_item -> error: ", str(e))
 			pass
 		return item_id, item_name
 
 	def check_filter(self, id, item):
-		name = magnet_name(item)
+		name = get_magnet_name(item)
 		try:
 			for row_include in self.cur.execute("SELECT value FROM filter WHERE id={0} AND exclude=0".format(str(id))):
 				if row_include[0] not in item:
-					print_warn("Filtering out, include reason \"{0}\" not found :\n".format(row_include[0]), str(name) + "\n")
+					WARN("Filtering out, include reason \"{0}\" not found :\n".format(row_include[0]), str(name) + "\n")
 					return False
 
 			for row_exclude in self.cur.execute("SELECT value FROM filter WHERE id={0} AND exclude=1".format(str(id))):
 				if row_exclude[0] in item:
-					print_warn("Filtering out, exclude reason \"{0}\" found :\n".format(row_exclude[0]), str(name) + "\n")
+					WARN("Filtering out, exclude reason \"{0}\" found :\n".format(row_exclude[0]), str(name) + "\n")
 					return False
 		except sqlite3.Error as e:
-			print_err("check_filter -> sqlite error: ", str(e))
-			print_err(item)
+			ERROR("check_filter -> sqlite error: ", str(e))
+			ERROR(item)
 		except Exception as e:
-			print_err("check_filter -> error: ", str(e))
-			print_err(item)
+			ERROR("check_filter -> error: ", str(e))
+			ERROR(item)
 
 		return True # Download file
 
 	def check_memory(self, item):
 		count=0
-		name = magnet_name(item)
+		name = get_magnet_name(item)
 		try:
 			for row_memory in self.cur.execute("SELECT * FROM memory WHERE value = '{0}'".format(str(item))):
 				count+=1
 			if count == 0:
-				print_info("New torrent found:\n", "{0}\n".format(name))
+				INFO("New torrent found:\n", "{0}\n".format(name))
 				return True
 			else:
-				print_warn("Torrent already downloaded:\n", "{0}\n".format(name))
+				WARN("Torrent already downloaded:\n", "{0}\n".format(name))
 				return False
 		except sqlite3.Error as e:
-			print_err("check_memory -> sqlite error: ", str(e))
-			print_err(item)
+			ERROR("check_memory -> sqlite error: ", str(e))
+			ERROR(item)
 
 	def add_to_memory(self, item):
 		try:
 			self.cur.execute("INSERT INTO memory VALUES (NULL, '{0}', strftime('%s','now'))".format(str(item)))
 			self.con.commit()
 		except sqlite3.Error as e:
-			print_err("add_to_memory -> sqlite error: ", str(e))
-			print_err(item)
+			ERROR("add_to_memory -> sqlite error: ", str(e))
+			ERROR(item)
 
 	def clean_memory(self, all=False):
 		if all:
@@ -158,11 +174,12 @@ class fetcht_core:
 		else:
 			self.cur.execute("DELETE FROM memory WHERE (strftime('%s','now') - date) > 15552000")
 		self.con.commit()
+		self.vacuum()
 
 	def close(self):
 		self.clean_memory()
 		self.con.close()
-		print_info("bye bye!")
+		INFO("bye bye!")
 
 	def init(self):
 		try:
@@ -179,12 +196,20 @@ class fetcht_core:
 								PRIMARY KEY (id,value,exclude));''')
 			self.con.commit()
 		except sqlite3.Error as e:
-			print_err("init -> sqlite error: ", str(e))
+			ERROR("init -> sqlite error: ", str(e))
 			pass
 
 	def query(self, qstring):
 		self.cur.execute(str(qstring))
 		self.con.commit()
+
+	def vacuum(self):
+		try:
+			self.cur.execute('VACUUM')
+			self.con.commit()
+		except sqlite3.Error as e:
+			ERROR("init -> sqlite error: ", str(e))
+			pass
 
 	def insert(self, name, source):
 		self.cur.execute("INSERT INTO keyword VALUES (NULL, '{0}', datetime('now'), '{1}', 1)".format(str(name), str(source)))
@@ -230,18 +255,18 @@ class fetcht_core:
 
 	def process_item(self, row, item, link):
 		if len(row) < 3 :
-			#print_err("Malformed row: ", str(row))
+			#ERROR("Malformed row: ", str(row))
 			return
 		check_id , check_item, enabled = row
 
 		if str(check_item).lower().replace("."," ") in str(item).lower().replace("."," "):
 			if not enabled:
-				print_warn("Downloadable but disabled:\n", magnet_name(item) + "\n")
+				WARN("Downloadable but disabled:\n", get_magnet_name(item) + "\n")
 			elif self.check_filter(check_id, item):
 				if self.check_memory(item):
 					if self.manual_add and (not ask("Do you want to load this torrent?")):
 						return
-					if load_torrent(self.cfg.get('torrentcmd'), link, item) == 0:
+					if load_torrent(self.torrent_cmd, link, item) == 0:
 						self.add_to_memory(item)
 
 	def process_command(self, cmd):
@@ -284,12 +309,12 @@ class fetcht_core:
 					self.init()
 
 			elif c == "dump":
-				print_warn("not yet implemented...")
+				WARN("not yet implemented...")
 
 			elif c in ["insert", "ins", "i"]: #TODO check valid source
 				if len(cmd) == 3:
 					self.insert(cmd[1], cmd[2])
-					print_info("Inserting \"{0}\" source: {1}. id: {2}".format(cmd[1],cmd[2], self.find_id_by_name(cmd[1])))
+					INFO("Inserting \"{0}\" source: {1}. id: {2}".format(cmd[1],cmd[2], self.find_id_by_name(cmd[1])))
 				else:
 					print("Wrong synthax. use \"insert <name> <source>\"\nname: name of the series. be careful to match the exact name in magnet or link name.\nsource: one of {eztv,horrible,nyaa,pirate}")
 
@@ -297,10 +322,10 @@ class fetcht_core:
 				if len(cmd) == 4:
 					[item_id, item_name] = self.get_item(cmd[1])
 					self.update(item_id, cmd[2], cmd[3])
-					print_info("Updating \"{0}\" id:{1} -> {2} = {3}".format(item_name, item_id, cmd[2], cmd[3]))
+					INFO("Updating \"{0}\" id:{1} -> {2} = {3}".format(item_name, item_id, cmd[2], cmd[3]))
 				else:
-					print_err("Wrong synthax. use \"update <id/name> <opt> <val>\"")
-					print_warn("<opt>: name, enabled, source\"")
+					ERROR("Wrong synthax. use \"update <id/name> <opt> <val>\"")
+					WARN("<opt>: name, enabled, source\"")
 
 			elif c in ["exclude","include"]:
 				if len(cmd) == 3:
@@ -308,29 +333,29 @@ class fetcht_core:
 					[item_id, item_name] = self.get_item(cmd[1])
 					if int(item_id) >= 0:
 						self.filter(item_id, cmd[2], action)
-						print_info("New filter for \"{0}\" id:{1} keyword: \"{2}\"".format(item_name, item_id, cmd[2]))
+						INFO("New filter for \"{0}\" id:{1} keyword: \"{2}\"".format(item_name, item_id, cmd[2]))
 					else:
-						print_err("Can't find \"{0}\" in database.".format(cmd[1]))
+						ERROR("Can't find \"{0}\" in database.".format(cmd[1]))
 				else:
-					print_err("Wrong synthax. use \"filter <id/name> <val> <0/1>\"")
+					ERROR("Wrong synthax. use \"filter <id/name> <val> <0/1>\"")
 
 			elif c in ["source"]:
 				if len(cmd) == 3:
 					[item_id, item_name] = self.get_item(cmd[1])
 					if int(item_id) >= 0:
 						self.set_source(item_id, cmd[2])
-						print_info("New source for \"{0}\" id:{1} source: \"{2}\"".format(item_name, item_id, cmd[2]))
+						INFO("New source for \"{0}\" id:{1} source: \"{2}\"".format(item_name, item_id, cmd[2]))
 					else:
-						print_err("Can't find \"{0}\" in database.".format(cmd[1]))
+						ERROR("Can't find \"{0}\" in database.".format(cmd[1]))
 				else:
-					print_err("Wrong synthax. use \"source <id/name> <source>\"")
+					ERROR("Wrong synthax. use \"source <id/name> <source>\"")
 
 			elif c == "filter": #TODO table
 				if len(cmd) >= 3:
 					[item_id, item_name] = self.get_item(cmd[2])
 					if int(item_id) >= 0:
 						if cmd[1]=="show":
-							print_info("Filters for {0} id:{1} :".format(item_name, item_id))
+							INFO("Filters for {0} id:{1} :".format(item_name, item_id))
 							col_names=["Value", "Filter Type"]
 							x = PrettyTable(col_names)
 							x.padding_width = 1
@@ -344,15 +369,15 @@ class fetcht_core:
 						elif cmd[1]=="del":
 							if len(cmd) == 4:
 								self.delete_filter(item_id, cmd[3])
-								print_info("Deleting \"{0}\" filter for \"{1}\" id:{2}".format(cmd[3], item_name, item_id))
+								INFO("Deleting \"{0}\" filter for \"{1}\" id:{2}".format(cmd[3], item_name, item_id))
 							else:
-								print_err("Missing extra argument for this action: value to delete.")
+								ERROR("Missing extra argument for this action: value to delete.")
 						else:
-							print_err("Unrecognized \"{0}\" action".format(cmd[1]))
+							ERROR("Unrecognized \"{0}\" action".format(cmd[1]))
 					else:
-						print_err("Can't find \"{0}\" in database.".format(cmd[2]))
+						ERROR("Can't find \"{0}\" in database.".format(cmd[2]))
 				else:
-					print_err("Wrong synthax. use \"filters (show|del) <id/name> <val>\".\nuse include/exclude command to add new filters.")
+					ERROR("Wrong synthax. use \"filters (show|del) <id/name> <val>\".\nuse include/exclude command to add new filters.")
 
 			elif c in ["enable", "disable"]:
 				if len(cmd) == 2:
@@ -361,25 +386,25 @@ class fetcht_core:
 						action = True if c=="enable" else False
 						self.enable(item_id, action)
 						if action:
-							print_info("Enabling \"{0}\" id:{1}".format(item_name, item_id))
+							INFO("Enabling \"{0}\" id:{1}".format(item_name, item_id))
 						else:
-							print_info("Disabling \"{0}\" id:{1}".format(item_name, item_id))
+							INFO("Disabling \"{0}\" id:{1}".format(item_name, item_id))
 					else:
-						print_err("Can't find \"{0}\" id or name in database.".format(cmd[1]))
+						ERROR("Can't find \"{0}\" id or name in database.".format(cmd[1]))
 				else:
-					print_err("Wrong synthax. use \"(enable|disable) <id/name>\"")
+					ERROR("Wrong synthax. use \"(enable|disable) <id/name>\"")
 
 			elif c in ["delete", "del"]:
 				if len(cmd) == 2:
 					[item_id, item_name] = self.get_item(cmd[1])
 					self.delete(item_id)
-					print_info("Deleting \"{0}\" id:{1} done".format(item_name, item_id))
+					INFO("Deleting \"{0}\" id:{1} done".format(item_name, item_id))
 				else:
-					print_err("Wrong synthax. use \"delete <id/name>\"")
+					ERROR("Wrong synthax. use \"delete <id/name>\"")
 
 			elif c in ["list", "ls", "l"]: #TODO show EXCLUDE{...}, INCLUDE{...}
 				if len(cmd) == 2:
-					print_info("searching for elements containing \"{0}\"\n".format(cmd[1]))
+					INFO("searching for elements containing \"{0}\"\n".format(cmd[1]))
 					search_str = cmd[1]
 				else:
 					search_str = ""
@@ -400,7 +425,7 @@ class fetcht_core:
 					if count > 0:
 						print (x)
 					else:
-						print_info("No results!")
+						INFO("No results!")
 
 			elif c == "schema":
 				x = PrettyTable(["Table Name", "Primary Key", "Unique", "Fields"])
@@ -413,24 +438,24 @@ class fetcht_core:
 			elif c == "query": # TODO handle output
 				if len(cmd) == 2:
 					self.query(cmd[1])
-					print_info("Query executed!")
+					INFO("Query executed!")
 
 			elif c in ["clear", "clr"]: #TODO clear last x
 				self.clean_memory(True)
-				print_info("Memory table cleared")
+				INFO("Memory table cleared")
 
 			elif c in ["fetch", "f"]:
-				if self.cfg.get('checkprocess') == '1':
-					check_process(self.cfg.get('torrentcmd'))
+				if self.check_process == '1':
+					check_process(self.torrent_cmd)
 				if len(cmd) > 1 and cmd[1] == "manual":
 					self.manual_add = True
 				if len(cmd) > 1 and cmd[1].isdigit():
-					print_info("Setting check pages number to {0}".format(cmd[1]))
-					self.check_pages_num = int(cmd[1])
+					INFO("Setting check pages number to {0}".format(cmd[1]))
+					self.default_npages = int(cmd[1])
 
-				print_info("Checking eztv source...")
-				for i in range(0, self.check_pages_num):
-					print_info("page #{0}\n".format(i))
+				INFO("Checking eztv source...")
+				for i in range(0, self.default_npages):
+					INFO("page #{0}\n".format(i))
 
 					url = "http://eztv-proxy.net/"; #'https://eztv.ag/'
 					if i > 0:
@@ -447,9 +472,9 @@ class fetcht_core:
 							for row in self.search("eztv"):
 								self.process_item(row, magnet, magnet)
 					except Exception as e:
-						print_err("process_command_eztv -> error : ", str(e))
+						ERROR("process_command_eztv -> error : ", str(e))
 
-				print_info("Checking horrible source...")
+				INFO("Checking horrible source...")
 				url = "http://horriblesubs.info/rss.php?res=720"
 
 				try:
@@ -467,10 +492,10 @@ class fetcht_core:
 						for row in self.search("nyaa"):
 							self.process_item(row, name, magnet)
 				except Exception as e:
-					print_err("process_command_horrible -> error: ", str(e))
+					ERROR("process_command_horrible -> error: ", str(e))
 					pass
 
-				print_info("Checking piratebay source...")
+				INFO("Checking piratebay source...")
 				for row in self.search("pirate"):
 					s_id , s_item, s_enabled = row
 					url = "https://pirateproxy.cc/search/{0}/0/3/0".format(s_item)
@@ -485,14 +510,14 @@ class fetcht_core:
 							magnet = magnet.strip()
 							self.process_item(row, magnet, magnet)
 					except Exception as e:
-						print_err("process_command_pirate -> error: ", str(e))
+						ERROR("process_command_pirate -> error: ", str(e))
 						pass
 
 			elif cmd != ['']:
-				print_err("process_command -> command not found!\n", "Please, type \"help\" for command list")
+				ERROR("process_command -> command not found!\n", "Please, type \"help\" for command list")
 
 		except sqlite3.Error as e:
-			print_err("process_command -> sqlite error: ",str(e))
+			ERROR("process_command -> sqlite error: ",str(e))
 			pass
 		except Exception as e:
-			print_err("process_command -> error: ", str(e));
+			ERROR("process_command -> error: ", str(e));

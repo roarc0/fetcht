@@ -2,11 +2,11 @@ import gi
 gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk, Gio
 
-from fetcht.prettyprint import *
-from fetcht.fetcht_core import *
-from fetcht.fetcht_gui_add import *
+from fetcht.core import *
+from fetcht.gui_add import *
+from fetcht.utils import *
 
-guiTitle = "fetcht v0.4"
+guiTitle = "fetcht"
 
 class FetchtWindow(Gtk.Window):
 	def __init__(self, core):

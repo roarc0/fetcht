@@ -16,7 +16,11 @@ class jconfig(object):
         self.load()
 
     def get(self, key):
-        return self.cfg[key]
+        try:
+            return self.cfg[key]
+        except Exception as e:
+            pass
+        return None
 
     def set(self, key, val):
         self.cfg[key] = val

@@ -8,18 +8,33 @@ class PrettyPrint:
 	FAIL = '\033[91m'
 	ENDC = '\033[0m'
 
-def print_debug(header, message=""):
+def DEBUG(header, message=""):
 	if verbose:
 		print(PrettyPrint.HEADER + "*** " + PrettyPrint.OKGREEN + header + PrettyPrint.ENDC + message)
 
-def print_info(header, message=""):
+def INFO(header, message=""):
 	if verbose:
 		print(PrettyPrint.HEADER + "*** " + PrettyPrint.OKBLUE + header + PrettyPrint.ENDC + message)
 
-def print_warn(header, message=""):
+def WARN(header, message=""):
 	if verbose:
 		print(PrettyPrint.HEADER + "*** " + PrettyPrint.WARNING + header + PrettyPrint.ENDC + message)
 
-def print_err(header, message="" ):
+def ERROR(header, message="" ):
 	if verbose:
 		print(PrettyPrint.HEADER + "*** " + PrettyPrint.FAIL + header + PrettyPrint.ENDC + message)
+
+def ask(what):
+	res = input("{0} (y/N) ".format(what))
+	if res == "yes" or res == "y":
+	  return True
+	else:
+	  return False
+
+def find_between(s, first, last):
+    try:
+        start = s.index( first ) + len( first )
+        end = s.index( last, start )
+        return s[start:end]
+    except ValueError:
+        return ""
