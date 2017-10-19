@@ -51,13 +51,13 @@ class core:
 		if self.torrent_cmd is None:
 			self.torrent_cmd = ""
 
-		self.default_npages = self.cfg.get('default_npages')
-		if self.default_npages is None:
-			self.default_npages = 5
+		self.npages = int(self.cfg.get('npages'))
+		if self.npages is None:
+			self.npages = 5
 
-		self.request_timeout = self.cfg.get('request_timeout')
+		self.request_timeout = int(self.cfg.get('request_timeout'))
 		if self.request_timeout is None:
-			self.request_timeout = 8
+			self.request_timeout = 10
 
 		self.check_process = self.cfg.get('check_process')
 
@@ -444,7 +444,7 @@ class core:
 					check_process(self.check_process)
 				if len(cmd) > 1 and cmd[1].isdigit():
 					INFO("Setting check pages number to {0}".format(cmd[1]))
-					self.default_npages = int(cmd[1])
+					self.npages = int(cmd[1])
 
 				import fetcht.modules
 				fetcht.modules.load(self)
