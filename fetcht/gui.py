@@ -10,7 +10,7 @@ guiTitle = "fetcht"
 
 class FetchtWindow(Gtk.Window):
 	def __init__(self, core):
-		self.core = core
+		self.fcore = core
 		Gtk.Window.__init__(self, title=guiTitle)
 
 		self.set_border_width(10)
@@ -56,7 +56,7 @@ class FetchtWindow(Gtk.Window):
 		self.add(self.grid)
 
 		self.item_liststore = Gtk.ListStore(int, str, str, bool)
-		self.item_list = core.list()
+		self.item_list = self.fcore.list(self.fcore)
 		for item_ref in self.item_list:
 			self.item_liststore.append(list(item_ref))
 
@@ -118,7 +118,7 @@ class FetchtWindow(Gtk.Window):
 		"""Called add button clicks"""
 		model, treeiter = self.treeview.get_selection().get_selected()
 		if treeiter != None:
-		   self.core.delete(model[treeiter][0])
+		   self.fcore.delete(model[treeiter][0])
 		   for row in self.item_liststore:
 			   if row[0] == model[treeiter][0]:
 				   self.item_liststore.remove(row.iter)
@@ -130,14 +130,14 @@ class FetchtWindow(Gtk.Window):
 		response = dialog.run()
 
 		if response == Gtk.ResponseType.OK and (not dialog.source_str is None) and ( not dialog.name_str is None or dialog.name_str == ""):
-			self.core.insert(dialog.name_str, dialog.source_str)
-			item_id = self.core.find_id_by_name(dialog.name_str)
+			self.fcore.insert(dialog.name_str, dialog.source_str)
+			item_id = self.fcore.find_id_by_name(dialog.name_str)
 			self.item_liststore.append(list([int(item_id), dialog.name_str, dialog.source_str, True]))
 
 		dialog.destroy()
 
 def load_gui(core):
-	print_info("Loading gui");
+	INFO("Loading gui");
 	win = FetchtWindow(core)
 	win.connect("delete-event", Gtk.main_quit)
 	win.show_all()

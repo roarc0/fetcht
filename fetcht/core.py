@@ -254,7 +254,7 @@ class core:
 			return
 		check_id , check_item, enabled = row
 
-		if str(check_item).lower().replace("."," ") in str(item).lower().replace("."," "):
+		if str(check_item).lower().replace("."," ").replace("+", " ") in str(item).lower().replace("."," ").replace("+", " "):
 			if not enabled:
 				WARN("Downloadable but disabled:\n", get_magnet_name(item) + "\n")
 			elif self.check_filter(check_id, item):
