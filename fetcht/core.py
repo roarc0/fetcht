@@ -143,7 +143,8 @@ class core:
 		count=0
 		name = get_magnet_name(item)
 		try:
-			for row_memory in self.cur.execute("SELECT * FROM memory WHERE value = '{0}'".format(str(item))):
+			
+			for row_memory in self.cur.execute("SELECT * FROM memory WHERE value = '{0}'".format(str(item).replace("'","''"))):
 				count+=1
 			if count == 0:
 				INFO("New torrent found:\n", "{0}\n".format(name))
@@ -157,7 +158,7 @@ class core:
 
 	def add_to_memory(self, item):
 		try:
-			self.cur.execute("INSERT INTO memory VALUES (NULL, '{0}', strftime('%s','now'))".format(str(item)))
+			self.cur.execute("INSERT INTO memory VALUES (NULL, '{0}', strftime('%s','now'))".format(str(item).replace("'","''")))
 			self.con.commit()
 		except sqlite3.Error as e:
 			ERROR("add_to_memory -> sqlite error: ", str(e))
@@ -195,6 +196,7 @@ class core:
 			pass
 
 	def query(self, qstring):
+		INFO("query : " + str(qstring))
 		self.cur.execute(str(qstring))
 		self.con.commit()
 
@@ -431,8 +433,8 @@ class core:
 				print(x)
 
 			elif c == "query": # TODO handle output
-				if len(cmd) == 2:
-					self.query(cmd[1])
+				if len(cmd) >= 2:
+					self.query(' '.join(str(x) for x in cmd[1:]))
 					INFO("Query executed!")
 
 			elif c in ["clear", "clr"]: #TODO clear last x
@@ -441,6 +443,7 @@ class core:
 
 			elif c in ["fetch", "f"]:
 				if self.check_process != '' or self.check_process != None:
+					INFO(f"Checking for {self.check_process} process")
 					check_process(self.check_process)
 				if len(cmd) > 1 and cmd[1].isdigit():
 					INFO("Setting check pages number to {0}".format(cmd[1]))

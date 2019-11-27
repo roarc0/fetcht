@@ -10,8 +10,8 @@ dl_path = os.getenv("HOME")
 
 def check_process(name):
 	ps = subprocess.Popen("ps -ax | awk '/" + name + "/{print \"1\";exit}'",
-						  shell=True,
-						  stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+		shell=True,
+		stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 	output = ps.stdout.read()
 	ps.stdout.close()
 	ps.wait()

@@ -1,0 +1,3 @@
+prettytable
+beautifulsoup4
+lxml

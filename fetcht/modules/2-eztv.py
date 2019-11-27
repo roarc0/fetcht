@@ -1,12 +1,15 @@
 from urllib.request import Request, urlopen
 import re
+import ssl
 
 from fetcht.utils import *
 
 def __main__(core):
 	INFO("Checking eztv source...")
-	urls = [ 'https://eztv.ag/', 'http://eztv-proxy.net/']
+	urls = [ 'https://eztv.io/', 'https://eztv.tf/', 'https://eztv.yt/', 'https://eztv.ag/', 'http://eztv-proxy.net/']
 	current = 0
+	context = ssl._create_unverified_context()
+	regexp = re.compile("<a href=\"(magnet.+?)\"")
 	for i in range(0, core.npages):	
 		while True:
 			url = urls[current]
@@ -15,8 +18,7 @@ def __main__(core):
 				url = "{0}page_{1}".format(urls[current], i)
 			try:
 				req = Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-				data = urlopen(req, None, core.request_timeout).read()
-				regexp = re.compile("<a href=\"(magnet.+?)\"")
+				data = urlopen(req, None, core.request_timeout, context=context).read()
 				magnets = regexp.findall(str(data))
 
 				for magnet in magnets:

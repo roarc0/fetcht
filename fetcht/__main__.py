@@ -4,7 +4,7 @@ import sys, getopt
 
 from fetcht.core import *
 from fetcht.utils import *
-from fetcht.gui import *
+#from fetcht.gui import *
 
 __program_name__ = "fetcht"
 __version__ = '0.6'
@@ -60,8 +60,8 @@ def main():
 			verbose = False
 		elif o in ("-h", "--help"):
 			usage()
-		elif o in ("-g", "--gui"):
-			load_gui(core)
+		#elif o in ("-g", "--gui"):
+		#	load_gui(core)
 		elif o in ("-c", "--cmd"):
 			load_cmd(fcore, "")
 
